@@ -14,6 +14,9 @@ import {
   IconButton,
   Kbd,
   Tooltip,
+  Tag,
+  TagLabel,
+  TagCloseButton,
 } from '@chakra-ui/react';
 import { Search, X } from 'lucide-react';
 import { Entity, EntityType } from '../../types';
@@ -21,14 +24,14 @@ import { Entity, EntityType } from '../../types';
 interface SearchBarProps {
   entities: Entity[];
   onSearch: (results: string[]) => void;
-  onSelectEntity: (entityId: string) => void;
+  onSelectEntity?: (entityId: string) => void; // Make optional since we're just highlighting now
 }
 
 const SearchBar: React.FC<SearchBarProps> = ({ entities, onSearch, onSelectEntity }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<Entity[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [selectedEntities, setSelectedEntities] = useState<Entity[]>([]);
   const [selectedResultIndex, setSelectedResultIndex] = useState(-1);
   const { colorMode } = useColorMode();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -38,7 +41,6 @@ const SearchBar: React.FC<SearchBarProps> = ({ entities, onSearch, onSelectEntit
   useEffect(() => {
     if (searchTerm.trim() === '') {
       setSearchResults([]);
-      onSearch([]);
       setSelectedResultIndex(-1);
       return;
     }
@@ -64,10 +66,15 @@ const SearchBar: React.FC<SearchBarProps> = ({ entities, onSearch, onSelectEntit
     });
     
     setSearchResults(results);
-    onSearch(results.map(r => r.id));
     setIsDropdownOpen(results.length > 0);
     setSelectedResultIndex(-1);
-  }, [searchTerm, entities, onSearch]);
+  }, [searchTerm, entities]);
+
+  // Update search results whenever selected entities change
+  useEffect(() => {
+    // Just highlight the selected entities on the graph
+    onSearch(selectedEntities.map(entity => entity.id));
+  }, [selectedEntities, onSearch]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -128,7 +135,6 @@ const SearchBar: React.FC<SearchBarProps> = ({ entities, onSearch, onSelectEntit
   const clearSearch = () => {
     setSearchTerm('');
     setSearchResults([]);
-    onSearch([]);
     setIsDropdownOpen(false);
     inputRef.current?.focus();
   };
@@ -136,20 +142,25 @@ const SearchBar: React.FC<SearchBarProps> = ({ entities, onSearch, onSelectEntit
   const handleSelectEntity = (entityId: string) => {
     const entity = entities.find(e => e.id === entityId);
     if (entity) {
-      // Add to recent searches if not already there
-      if (!recentSearches.includes(entity.name)) {
-        setRecentSearches(prev => [entity.name, ...prev].slice(0, 5));
+      // Add to selected entities if not already there
+      if (!selectedEntities.some(e => e.id === entity.id)) {
+        setSelectedEntities(prev => [...prev, entity]);
       }
       
-      setSearchTerm(entity.name);
-      onSelectEntity(entityId);
+      // Clear search term
+      setSearchTerm('');
       setIsDropdownOpen(false);
+      inputRef.current?.focus();
+      
+      // Call the optional onSelectEntity callback if provided
+      if (onSelectEntity) {
+        onSelectEntity(entityId);
+      }
     }
   };
 
-  const handleRecentSearch = (term: string) => {
-    setSearchTerm(term);
-    inputRef.current?.focus();
+  const removeEntity = (entityId: string) => {
+    setSelectedEntities(prev => prev.filter(entity => entity.id !== entityId));
   };
 
   // Get badge color based on entity type
@@ -247,21 +258,20 @@ const SearchBar: React.FC<SearchBarProps> = ({ entities, onSearch, onSelectEntit
         </Box>
       )}
 
-      {/* Recent searches */}
-      {recentSearches.length > 0 && !searchTerm && (
+      {/* Selected entities with X buttons */}
+      {selectedEntities.length > 0 && (
         <Flex mt="2" flexWrap="wrap" gap="2">
-          {recentSearches.map((term, index) => (
-            <Badge 
-              key={index}
-              colorScheme={colorMode === 'dark' ? 'blue' : 'brand'}
-              cursor="pointer"
-              onClick={() => handleRecentSearch(term)}
-              px="2"
-              py="1"
+          {selectedEntities.map((entity) => (
+            <Tag
+              key={entity.id}
+              size="md"
               borderRadius="full"
+              variant="solid"
+              colorScheme={getBadgeColor(entity.type)}
             >
-              {term}
-            </Badge>
+              <TagLabel>{entity.name}</TagLabel>
+              <TagCloseButton onClick={() => removeEntity(entity.id)} />
+            </Tag>
           ))}
         </Flex>
       )}

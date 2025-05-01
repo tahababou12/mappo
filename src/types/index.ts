@@ -9,6 +9,9 @@ export interface Entity {
   startDate?: string;
   endDate?: string;
   description?: string;
+  location?: string;
+  lon?: number;
+  lat?: number;
   metadata: Record<string, string | number | boolean | string[]>;
 }
 
@@ -67,4 +70,23 @@ export interface QueryResult {
   text: string;
   entities: string[];
   relationships: string[];
+}
+
+// Temporary d3 simulation interfaces
+declare namespace d3 {
+  interface SimulationNodeDatum {
+    index?: number;
+    x?: number;
+    y?: number;
+    vx?: number;
+    vy?: number;
+    fx?: number | null;
+    fy?: number | null;
+  }
+  
+  interface SimulationLinkDatum<NodeDatum extends SimulationNodeDatum> {
+    source: string | NodeDatum;
+    target: string | NodeDatum;
+    index?: number;
+  }
 }

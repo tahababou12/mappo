@@ -600,6 +600,19 @@ const ForceGraph: React.FC<ForceGraphProps> = ({
             return isConnected ? 1.0 : 0.1; 
           }
           
+          // If there are highlighted nodes from search, highlight their links too
+          if (highlightedNodeIds.length > 0) {
+            const sourceId = typeof d.source === 'object' ? d.source.id : d.source;
+            const targetId = typeof d.target === 'object' ? d.target.id : d.target;
+            
+            // Show links connected to any highlighted node with full opacity
+            const isConnected = 
+              highlightedNodeIds.includes(sourceId) || 
+              highlightedNodeIds.includes(targetId);
+            
+            return isConnected ? 1.0 : 0.1;
+          }
+          
           // Apply relationship type filter by adjusting opacity
           const relationshipEnabled = filters.relationshipTypes[d.type as RelationshipType];
           if (!relationshipEnabled) {
@@ -610,7 +623,7 @@ const ForceGraph: React.FC<ForceGraphProps> = ({
           return 0.7;
         });
     }
-  }, [selectedNodeId, filters.relationshipTypes]);
+  }, [selectedNodeId, highlightedNodeIds, filters.relationshipTypes]);
 
   // Always ensure links are visible with appropriate styling when filter conditions change
   useEffect(() => {
@@ -642,6 +655,19 @@ const ForceGraph: React.FC<ForceGraphProps> = ({
             return isConnected ? 1.0 : 0.1;
           }
           
+          // If there are highlighted nodes from search, highlight their links too
+          if (highlightedNodeIds.length > 0) {
+            const sourceId = typeof d.source === 'object' ? d.source.id : d.source;
+            const targetId = typeof d.target === 'object' ? d.target.id : d.target;
+            
+            // Show links connected to any highlighted node with full opacity
+            const isConnected = 
+              highlightedNodeIds.includes(sourceId) || 
+              highlightedNodeIds.includes(targetId);
+            
+            return isConnected ? 1.0 : 0.1;
+          }
+          
           // Apply relationship type filter by adjusting opacity rather than removing links
           const relationshipEnabled = filters.relationshipTypes[d.type as RelationshipType];
           if (!relationshipEnabled) {
@@ -657,7 +683,7 @@ const ForceGraph: React.FC<ForceGraphProps> = ({
         simulationRef.current.alpha(0.05).restart();
       }
     }
-  }, [filteredData, filters.relationshipTypes, selectedNodeId, svgRef.current]);
+  }, [filteredData, filters.relationshipTypes, selectedNodeId, highlightedNodeIds, svgRef.current]);
 
   // Improved drag functionality with better stability
   function drag() {

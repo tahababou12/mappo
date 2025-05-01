@@ -60,6 +60,9 @@ const GraphContainer: React.FC<GraphContainerProps> = ({
   // Add a reference to track filter change count for reliable remounting
   const filterChangeCountRef = useRef(0);
 
+  // Add reference to track previous filters
+  const prevFiltersRef = useRef<FilterState>(filters);
+
   // Update dimensions on resize
   useEffect(() => {
     const updateDimensions = () => {
@@ -123,21 +126,40 @@ const GraphContainer: React.FC<GraphContainerProps> = ({
   useEffect(() => {
     setHas3DError(false);
     
-    // Increment the filter change counter - this will be used to force remounts
+    // Increment the filter change counter - this will be used for remounting
     filterChangeCountRef.current += 1;
     
-    // Critical fix: Force a complete re-render by briefly setting isLoading when filters change
-    // This ensures edges remain visible when filters are updated
-    setIsLoading(true);
-    console.log("GraphContainer: Filter change detected, forcing re-render");
+    // Check if the change is just a time range adjustment
+    const isOnlyTimeRangeChange = () => {
+      // Return true if only timeRange changed, false if any other filter changed
+      return (
+        JSON.stringify(prevFiltersRef.current.entityTypes) === JSON.stringify(filters.entityTypes) &&
+        JSON.stringify(prevFiltersRef.current.relationshipTypes) === JSON.stringify(filters.relationshipTypes) &&
+        prevFiltersRef.current.layout === filters.layout &&
+        prevFiltersRef.current.nodeSizeAttribute === filters.nodeSizeAttribute &&
+        prevFiltersRef.current.showCommunities === filters.showCommunities
+      );
+    };
     
-    // Use a very short timeout to trigger a complete re-render cycle
-    const loadingTimeout = setTimeout(() => {
-      setIsLoading(false);
-      console.log("GraphContainer: Re-render complete");
-    }, 50); // Very short timeout to minimize visible loading state
+    // If it's only a time range change, don't show loading
+    if (isOnlyTimeRangeChange()) {
+      console.log("GraphContainer: Time range change detected, updating without loading state");
+    } else {
+      // For other filter changes, briefly show loading state
+      console.log("GraphContainer: Non-time filter change detected, forcing re-render");
+      setIsLoading(true);
+      
+      // Use a very short timeout to trigger a complete re-render cycle
+      const loadingTimeout = setTimeout(() => {
+        setIsLoading(false);
+        console.log("GraphContainer: Re-render complete");
+      }, 50); // Very short timeout to minimize visible loading state
+      
+      return () => clearTimeout(loadingTimeout);
+    }
     
-    return () => clearTimeout(loadingTimeout);
+    // Update the previous filters reference for next comparison
+    prevFiltersRef.current = {...filters};
   }, [filters]);
 
   // Use custom cache-busting key to force complete remount of graph components when filters change
@@ -326,7 +348,7 @@ const GraphContainer: React.FC<GraphContainerProps> = ({
         <Box
           position="absolute"
           top="10px"
-          right="10px"
+          left="10px"
           bg={colorMode === 'dark' ? 'gray.700' : 'white'}
           p={3}
           borderRadius="md"

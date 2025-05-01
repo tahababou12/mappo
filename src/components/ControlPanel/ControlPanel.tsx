@@ -17,12 +17,10 @@ import {
   AccordionIcon,
 } from '@chakra-ui/react';
 import { Moon, Sun } from 'lucide-react';
-import EntityTypeFilters from './EntityTypeFilters';
 import RelationshipTypeFilters from './RelationshipTypeFilters';
 import TimeRangeSlider from './TimeRangeSlider';
-import LayoutOptions from './LayoutOptions';
 import NodeSizeOptions from './NodeSizeOptions';
-import { FilterState, EntityType, RelationshipType, LayoutType } from '../../types';
+import { FilterState, RelationshipType, LayoutType } from '../../types';
 
 interface ControlPanelProps {
   filters: FilterState;
@@ -31,15 +29,6 @@ interface ControlPanelProps {
 
 const ControlPanel: React.FC<ControlPanelProps> = ({ filters, onFilterChange }) => {
   const { colorMode, toggleColorMode } = useColorMode();
-
-  const handleEntityTypeChange = (type: EntityType, checked: boolean) => {
-    onFilterChange({
-      entityTypes: {
-        ...filters.entityTypes,
-        [type]: checked
-      }
-    });
-  };
 
   const handleRelationshipTypeChange = (type: RelationshipType, checked: boolean) => {
     onFilterChange({
@@ -121,17 +110,6 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ filters, onFilterChange }) 
     });
   };
 
-  const showAllEntityTypes = () => {
-    onFilterChange({
-      entityTypes: {
-        person: true,
-        organization: true,
-        event: true,
-        location: true
-      }
-    });
-  };
-
   return (
     <Box 
       p={4} 
@@ -169,17 +147,12 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ filters, onFilterChange }) 
             <h2>
               <AccordionButton>
                 <Box flex="1" textAlign="left" fontWeight="semibold">
-                  Entity Filters
+                  Relationship Actions
                 </Box>
                 <AccordionIcon />
               </AccordionButton>
             </h2>
             <AccordionPanel pb={4}>
-              <EntityTypeFilters 
-                filters={filters.entityTypes} 
-                onChange={handleEntityTypeChange} 
-              />
-              
               <RelationshipTypeFilters 
                 filters={filters.relationshipTypes} 
                 onChange={handleRelationshipTypeChange} 
@@ -191,7 +164,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ filters, onFilterChange }) 
             <h2>
               <AccordionButton>
                 <Box flex="1" textAlign="left" fontWeight="semibold">
-                  Time & Layout
+                  Time Period
                 </Box>
                 <AccordionIcon />
               </AccordionButton>
@@ -204,10 +177,10 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ filters, onFilterChange }) 
                 onChange={handleTimeRangeChange} 
               />
               
-              <LayoutOptions 
+              {/* <LayoutOptions 
                 layout={filters.layout} 
                 onChange={handleLayoutChange} 
-              />
+              /> */}
             </AccordionPanel>
           </AccordionItem>
 
@@ -258,15 +231,6 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ filters, onFilterChange }) 
             variant="outline"
           >
             Show All Relationships
-          </Button>
-
-          <Button 
-            onClick={showAllEntityTypes} 
-            size="sm" 
-            colorScheme={colorMode === 'dark' ? 'blue' : 'brand'}
-            variant="outline"
-          >
-            Show All Entity Types
           </Button>
         </Flex>
       </VStack>

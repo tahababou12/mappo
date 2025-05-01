@@ -42,7 +42,7 @@ const RelationshipTypeFilters: React.FC<RelationshipTypeFiltersProps> = ({ filte
 
   return (
     <Box mb={4}>
-      <Heading size="sm" mb={2}>Relationship Actions</Heading>
+      {/* <Heading size="sm" mb={2}>Relationship Actions</Heading> */}
       <Stack spacing={2}>
         {Object.entries(actionTypes).map(([type, label]) => (
           <Flex key={type} align="center">

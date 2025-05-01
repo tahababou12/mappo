@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import {
   Box,
   Flex,
@@ -31,6 +31,7 @@ import {
   MenuList,
   MenuItem,
   Divider,
+  Spinner,
 } from '@chakra-ui/react';
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import { 
@@ -59,6 +60,14 @@ import QueryInterface from '../components/QueryInterface/QueryInterface';
 import ChatbotInterface from '../components/Chatbot/ChatbotInterface';
 import { Entity, Relationship, FilterState, GraphData } from '../types';
 
+// Lazy-load the new view components
+const StatisticsView = lazy(() => import('../components/Statistics/StatisticsView'));
+const EntityListView = lazy(() => import('../components/EntityList/EntityListView'));
+const GeographicMapView = lazy(() => import('../components/GeographicMap/GeographicMapView'));
+
+// Define view types
+type ViewType = 'network' | 'statistics' | 'entityList' | 'geographicMap';
+
 interface MainLayoutProps {
   data: GraphData;
 }
@@ -69,6 +78,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
   const [searchResults, setSearchResults] = useState<string[]>([]);
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [currentView, setCurrentView] = useState<ViewType>('network');
   const { isOpen: isInfoOpen, onOpen: onInfoOpen, onClose: onInfoClose } = useDisclosure();
   
   // Initialize filters
@@ -98,11 +108,52 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
     ? data.nodes.find(node => node.id === selectedNodeId) || null 
     : null;
   
+  // Get entity relationships, respecting current filter settings
   const entityRelationships = selectedNodeId 
     ? data.links
-        .filter(link => link.source === selectedNodeId || link.target === selectedNodeId)
+        .filter(link => {
+          // First make sure this link connects to our selected node
+          // @ts-expect-error - Ignoring type checking for source and target properties
+          const linkSource = typeof link.source === 'object' ? link.source.id : link.source;
+          // @ts-expect-error - Ignoring type checking for source and target properties
+          const linkTarget = typeof link.target === 'object' ? link.target.id : link.target;
+          
+          // If this link doesn't connect to our selected node, skip it
+          if (linkSource !== selectedNodeId && linkTarget !== selectedNodeId) {
+            return false;
+          }
+          
+          // Only include relationship if it passes filter checks
+          const sourceNode = data.nodes.find(node => node.id === linkSource);
+          const targetNode = data.nodes.find(node => node.id === linkTarget);
+          
+          // Skip if either node doesn't exist
+          if (!sourceNode || !targetNode) return false;
+          
+          // Check entity type filters
+          if (!filters.entityTypes[sourceNode.type]) return false;
+          if (!filters.entityTypes[targetNode.type]) return false;
+          
+          // Check relationship type filter
+          if (!filters.relationshipTypes[link.type]) return false;
+          
+          // Check time range filter for entities with dates
+          const sourceYear = sourceNode.startDate ? parseInt(sourceNode.startDate.split('-')[0]) : null;
+          const targetYear = targetNode.startDate ? parseInt(targetNode.startDate.split('-')[0]) : null;
+          
+          if (sourceYear && (sourceYear < filters.timeRange[0] || sourceYear > filters.timeRange[1])) return false;
+          if (targetYear && (targetYear < filters.timeRange[0] || targetYear > filters.timeRange[1])) return false;
+          
+          return true;
+        })
         .map(link => {
-          const otherEntityId = link.source === selectedNodeId ? link.target : link.source;
+          // Normalize source/target to handle both string and object formats
+          // @ts-expect-error - Ignoring type checking for source and target properties
+          const linkSource = typeof link.source === 'object' ? link.source.id : link.source;
+          // @ts-expect-error - Ignoring type checking for source and target properties
+          const linkTarget = typeof link.target === 'object' ? link.target.id : link.target;
+          
+          const otherEntityId = linkSource === selectedNodeId ? linkTarget : linkSource;
           const otherEntity = data.nodes.find(node => node.id === otherEntityId);
           
           return {
@@ -110,6 +161,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
             relationship: link
           };
         })
+        .filter(rel => rel.entity) // Ensure we have a valid entity
     : [];
 
   const handleFilterChange = (newFilters: Partial<FilterState>) => {
@@ -119,6 +171,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
   const handleNodeSelect = (nodeId: string) => {
     setSelectedNodeId(nodeId);
     setIsLeftPanelCollapsed(false); // Expand panel when a node is selected
+    // Switch to network view if on another view
+    if (currentView !== 'network') {
+      setCurrentView('network');
+    }
   };
 
   const handleSearch = (results: string[]) => {
@@ -140,6 +196,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
   const toggleFullscreen = () => {
     setIsFullscreen(!isFullscreen);
     setIsLeftPanelCollapsed(true);
+  };
+
+  // Change the current view
+  const switchView = (view: ViewType) => {
+    setCurrentView(view);
   };
 
   // Network statistics for info panel
@@ -176,6 +237,42 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedNodeId]);
+
+  // Render the current view
+  const renderCurrentView = () => {
+    switch (currentView) {
+      case 'network':
+        return (
+          <GraphContainer
+            data={data}
+            filters={filters}
+            onNodeSelect={handleNodeSelect}
+            selectedNodeId={selectedNodeId}
+            searchResults={searchResults}
+          />
+        );
+      case 'statistics':
+        return (
+          <Suspense fallback={<Flex justify="center" align="center" height="100%"><Spinner size="xl" /></Flex>}>
+            <StatisticsView data={data} />
+          </Suspense>
+        );
+      case 'entityList':
+        return (
+          <Suspense fallback={<Flex justify="center" align="center" height="100%"><Spinner size="xl" /></Flex>}>
+            <EntityListView data={data} onNodeSelect={handleNodeSelect} />
+          </Suspense>
+        );
+      case 'geographicMap':
+        return (
+          <Suspense fallback={<Flex justify="center" align="center" height="100%"><Spinner size="xl" /></Flex>}>
+            <GeographicMapView data={data} onNodeSelect={handleNodeSelect} />
+          </Suspense>
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
     <Box 
@@ -225,10 +322,34 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
                   Views
                 </MenuButton>
                 <MenuList>
-                  <MenuItem icon={<Network size={16} />}>Network Graph</MenuItem>
-                  <MenuItem icon={<BarChart3 size={16} />}>Statistics</MenuItem>
-                  <MenuItem icon={<Users size={16} />}>Entity List</MenuItem>
-                  <MenuItem icon={<Map size={16} />}>Geographic Map</MenuItem>
+                  <MenuItem 
+                    icon={<Network size={16} />} 
+                    onClick={() => switchView('network')}
+                    fontWeight={currentView === 'network' ? 'bold' : 'normal'}
+                  >
+                    Network Graph
+                  </MenuItem>
+                  <MenuItem 
+                    icon={<BarChart3 size={16} />} 
+                    onClick={() => switchView('statistics')}
+                    fontWeight={currentView === 'statistics' ? 'bold' : 'normal'}
+                  >
+                    Statistics
+                  </MenuItem>
+                  <MenuItem 
+                    icon={<Users size={16} />} 
+                    onClick={() => switchView('entityList')}
+                    fontWeight={currentView === 'entityList' ? 'bold' : 'normal'}
+                  >
+                    Entity List
+                  </MenuItem>
+                  <MenuItem 
+                    icon={<Map size={16} />} 
+                    onClick={() => switchView('geographicMap')}
+                    fontWeight={currentView === 'geographicMap' ? 'bold' : 'normal'}
+                  >
+                    Geographic Map
+                  </MenuItem>
                 </MenuList>
               </Menu>
               
@@ -384,16 +505,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
           )}
         </GridItem>
         
-        {/* Right Panel (Graph Visualization) */}
+        {/* Right Panel (Graph Visualization or other views) */}
         <GridItem>
           <Box height="100%" p={2}>
-            <GraphContainer
-              data={data}
-              filters={filters}
-              onNodeSelect={handleNodeSelect}
-              selectedNodeId={selectedNodeId}
-              searchResults={searchResults}
-            />
+            {renderCurrentView()}
           </Box>
         </GridItem>
       </Grid>

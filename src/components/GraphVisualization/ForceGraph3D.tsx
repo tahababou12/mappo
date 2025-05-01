@@ -410,15 +410,56 @@ const ForceGraph3DComponent: React.FC<ForceGraph3DComponentProps> = ({
           backgroundColor={colorMode === 'dark' ? '#1A202C' : '#F7FAFC'}
           nodeThreeObject={nodeThreeObject}
           linkColor={link => getLinkColor((link as LinkObject).type, colorMode === 'dark')}
-          linkWidth={link => (link as LinkObject).isPersonToPerson ? 3 : 1.5}
+          linkWidth={link => {
+            const sourceId = typeof (link as LinkObject).source === 'object' 
+              ? ((link as LinkObject).source as any).id 
+              : (link as LinkObject).source;
+            const targetId = typeof (link as LinkObject).target === 'object' 
+              ? ((link as LinkObject).target as any).id 
+              : (link as LinkObject).target;
+            
+            // Highlight links connected to selected node or any highlighted nodes
+            const isConnectedToSelected = selectedNodeId && (sourceId === selectedNodeId || targetId === selectedNodeId);
+            const isConnectedToHighlighted = highlightedNodeIds.length > 0 && 
+              (highlightedNodeIds.includes(sourceId) || highlightedNodeIds.includes(targetId));
+              
+            if (isConnectedToSelected || isConnectedToHighlighted) {
+              return (link as LinkObject).isPersonToPerson ? 4 : 2.5; // Thicker for highlighted connections
+            }
+            
+            return (link as LinkObject).isPersonToPerson ? 3 : 1.5; // Normal width
+          }}
           linkOpacity={0.8}
-          linkDirectionalParticles={4}
+          linkDirectionalParticles={link => {
+            const sourceId = typeof (link as LinkObject).source === 'object' 
+              ? ((link as LinkObject).source as any).id 
+              : (link as LinkObject).source;
+            const targetId = typeof (link as LinkObject).target === 'object' 
+              ? ((link as LinkObject).target as any).id 
+              : (link as LinkObject).target;
+            
+            // Add more particles to links connected to selected or highlighted nodes
+            const isConnectedToSelected = selectedNodeId && (sourceId === selectedNodeId || targetId === selectedNodeId);
+            const isConnectedToHighlighted = highlightedNodeIds.length > 0 && 
+              (highlightedNodeIds.includes(sourceId) || highlightedNodeIds.includes(targetId));
+              
+            if (isConnectedToSelected || isConnectedToHighlighted) {
+              return 6; // More particles for highlighted connections
+            }
+            
+            return 0; // No particles for regular connections to reduce visual noise
+          }}
           linkDirectionalParticleWidth={link => (link as LinkObject).isPersonToPerson ? 3 : 2}
           linkDirectionalParticleColor={link => getLinkColor((link as LinkObject).type, colorMode === 'dark')}
           linkDirectionalParticleSpeed={0.006}
           onNodeClick={handleNodeClick}
           onNodeHover={handleNodeHover}
-          nodeVal={node => node.id === selectedNodeId ? 8 : highlightedNodeIds.includes(node.id) ? 7 : 5}
+          nodeVal={node => {
+            // Increase size for selected or highlighted nodes
+            if (node.id === selectedNodeId) return 10;
+            if (highlightedNodeIds.includes(node.id)) return 9;
+            return 5;
+          }}
           cooldownTime={3000}
           d3AlphaDecay={0.02}
           d3VelocityDecay={0.3}
