@@ -1,13 +1,32 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Box, useColorMode } from '@chakra-ui/react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
+import { Box, useColorMode, useTheme } from '@chakra-ui/react';
 import ForceGraph3D from 'react-force-graph-3d';
 import { GraphData, GraphNode, GraphLink, FilterState, EntityType, RelationshipType } from '../../types';
-import theme from '../../theme';
+import { getNodeColor, getLinkColor } from '../../utils/colorUtils';
 import SpriteText from 'three-spritetext';
 import * as THREE from 'three';
-import * as d3 from 'd3';
 
-interface ForceGraph3DProps {
+// Custom type for 3D node with position properties
+interface GraphNode3D extends GraphNode {
+  x?: number;
+  y?: number;
+  z?: number;
+  vx?: number;
+  vy?: number;
+  vz?: number;
+  fx?: number | null;
+  fy?: number | null;
+  fz?: number | null;
+}
+
+// Custom type for 3D link with additional properties
+interface LinkObject extends GraphLink {
+  source: GraphNode3D | string;
+  target: GraphNode3D | string;
+  isPersonToPerson?: boolean;
+}
+
+interface ForceGraph3DComponentProps {
   data: GraphData;
   filters: FilterState;
   width: number;
@@ -18,7 +37,48 @@ interface ForceGraph3DProps {
   highlightedNodeIds: string[];
 }
 
-const ForceGraph3DComponent: React.FC<ForceGraph3DProps> = ({
+// Cache system for THREE.js objects to prevent memory leaks
+const nodeObjectCache: Map<string, THREE.Mesh> = new Map();
+const linkObjectCache: Map<string, THREE.Object3D> = new Map();
+const geometryCache: Map<string, THREE.BufferGeometry> = new Map();
+const materialCache: Map<string, THREE.Material> = new Map();
+
+// Dispose function to clean up Three.js objects
+function disposeObject(obj: THREE.Object3D): void {
+  if (!obj) return;
+  
+  // Remove from scene
+  if (obj.parent) {
+    obj.parent.remove(obj);
+  }
+  
+  // Dispose geometries
+  if ((obj as THREE.Mesh).geometry) {
+    (obj as THREE.Mesh).geometry.dispose();
+  }
+  
+  // Dispose materials (might be an array or a single material)
+  const materials = 
+    (obj as THREE.Mesh).material 
+      ? Array.isArray((obj as THREE.Mesh).material) 
+        ? (obj as THREE.Mesh).material 
+        : [(obj as THREE.Mesh).material]
+      : [];
+      
+  for (const material of materials as THREE.Material[]) {
+    if (material) {
+      material.dispose();
+    }
+  }
+  
+  // Recursively dispose child objects
+  while (obj.children.length > 0) {
+    disposeObject(obj.children[0]);
+  }
+}
+
+// The main 3D force graph component
+const ForceGraph3DComponent: React.FC<ForceGraph3DComponentProps> = ({
   data,
   filters,
   width,
@@ -29,245 +89,367 @@ const ForceGraph3DComponent: React.FC<ForceGraph3DProps> = ({
   highlightedNodeIds,
 }) => {
   const graphRef = useRef<any>(null);
+  const nodesRef = useRef<GraphNode3D[]>([]);
+  const frameRef = useRef<number>(0);
   const { colorMode } = useColorMode();
-  const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
-  const [graphData, setGraphData] = useState<{ nodes: any[], links: any[] }>({ nodes: [], links: [] });
-  const [initialized, setInitialized] = useState(false);
-
-  // Filter data based on current filters
+  const theme = useTheme();
+  
+  // Track mounted state to prevent memory leaks
+  const [isMounted, setIsMounted] = useState(true);
+  const isMountedRef = useRef(isMounted);
+  
   useEffect(() => {
-    const filteredNodes = data.nodes.filter(node => 
-      filters.entityTypes[node.type as EntityType] && 
-      (node.startDate ? 
-        parseInt(node.startDate.split('-')[0]) >= filters.timeRange[0] && 
-        parseInt(node.startDate.split('-')[0]) <= filters.timeRange[1] : true)
-    );
+    setIsMounted(true);
+    return () => {
+      isMountedRef.current = false;
+      
+      // Cancel animation frame
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = 0;
+      }
+      
+      // Clear caches to prevent memory leaks
+      nodeObjectCache.clear();
+      materialCache.clear();
+      geometryCache.clear();
+      
+      // Force dispose any Three.js objects
+      if (graphRef.current) {
+        try {
+          // Try to access internal dispose method if available
+          if (typeof graphRef.current._destructor === 'function') {
+            graphRef.current._destructor();
+          }
+        } catch (e) {
+          console.warn('Error disposing graph:', e);
+        }
+      }
+    };
+  }, []);
+  
+  // Filter data based on entity type and relationship filters
+  const filteredData = useMemo(() => {
+    // Filter nodes by entity type
+    const filteredNodes = data.nodes.filter(node => {
+      if (node.type === 'person' && !filters.entityTypes.person) return false;
+      if (node.type === 'organization' && !filters.entityTypes.organization) return false;
+      if (node.type === 'location' && !filters.entityTypes.location) return false;
+      if (node.type === 'event' && !filters.entityTypes.event) return false;
+      return true;
+    });
     
-    const nodeIds = new Set(filteredNodes.map(node => node.id));
+    // Get filtered node IDs for link filtering
+    const filteredNodeIds = new Set(filteredNodes.map(node => node.id));
     
-    const filteredLinks = data.links.filter(link => 
-      nodeIds.has(link.source as string) && 
-      nodeIds.has(link.target as string) && 
-      filters.relationshipTypes[link.type as RelationshipType]
-    );
+    // Filter links by relationship type and ensure both source and target nodes exist
+    const filteredLinks = data.links.filter(link => {
+      // Check if nodes exist in filtered set
+      const sourceId = typeof link.source === 'object' ? (link.source as GraphNode).id : link.source;
+      const targetId = typeof link.target === 'object' ? (link.target as GraphNode).id : link.target;
+      
+      if (!filteredNodeIds.has(sourceId) || !filteredNodeIds.has(targetId)) {
+        return false;
+      }
+      
+      // Filter by relationship type
+      if (link.type === 'family' && !filters.relationshipTypes.family) return false;
+      if (link.type === 'professional' && !filters.relationshipTypes.professional) return false;
+      if (link.type === 'social' && !filters.relationshipTypes.social) return false;
+      if (link.type === 'political' && !filters.relationshipTypes.political) return false;
+      if (link.type === 'conflict' && !filters.relationshipTypes.conflict) return false;
+      
+      return true;
+    });
     
-    // Create a stable layout first using D3 force simulation in 2D
-    const simulation = d3.forceSimulation()
-      .nodes(filteredNodes as d3.SimulationNodeDatum[])
-      .force('link', d3.forceLink(filteredLinks).id((d: any) => d.id).distance(50))
-      .force('charge', d3.forceManyBody().strength(-100))
-      .force('center', d3.forceCenter(0, 0))
-      .stop();
+    return { nodes: filteredNodes, links: filteredLinks };
+  }, [data, filters]);
+  
+  // Create optimized node and link objects for 3D rendering
+  const { nodes, links, graphData } = useMemo(() => {
+    // Regenerate nodes with 3D properties
+    const nodes = filteredData.nodes.map(node => {
+      const node3D: GraphNode3D = { ...node };
+      // Preserve existing coordinates if available
+      if (nodesRef.current.length > 0) {
+        const prevNode = nodesRef.current.find(n => n.id === node.id);
+        if (prevNode) {
+          node3D.x = prevNode.x;
+          node3D.y = prevNode.y;
+          node3D.z = prevNode.z;
+          node3D.vx = prevNode.vx;
+          node3D.vy = prevNode.vy;
+          node3D.vz = prevNode.vz;
+        }
+      }
+      return node3D;
+    });
     
-    // Run the simulation for a few iterations to get initial positions
-    for (let i = 0; i < 300; i++) simulation.tick();
+    // Update reference for position persistence
+    nodesRef.current = nodes;
     
-    // Prepare data for 3D graph with stable positions
-    const nodes = filteredNodes.map(node => {
-      // Find the node in the simulation
-      const simNode = simulation.nodes().find((n: any) => n.id === node.id);
+    // Process links with optimized relationship detection
+    const links = filteredData.links.map(link => {
+      const sourceId = typeof link.source === 'object' ? (link.source as GraphNode).id : link.source;
+      const targetId = typeof link.target === 'object' ? (link.target as GraphNode).id : link.target;
+      
+      const sourceNode = nodes.find(n => n.id === sourceId);
+      const targetNode = nodes.find(n => n.id === targetId);
+      
+      // Determine if this is a person-to-person link
+      const isPersonToPerson = 
+        sourceNode && 
+        targetNode && 
+        sourceNode.type === 'person' && 
+        targetNode.type === 'person';
       
       return {
-        ...node,
-        color: (theme.colors.entityColors as Record<string, string>)[node.type],
-        size: getNodeSize(node, filteredLinks, filters.nodeSizeAttribute),
-        highlighted: highlightedNodeIds.includes(node.id),
-        selected: node.id === selectedNodeId,
-        // Use simulation positions if available, otherwise use random positions
-        x: simNode ? simNode.x * 5 : (Math.random() * 200 - 100),
-        y: simNode ? simNode.y * 5 : (Math.random() * 200 - 100),
-        z: simNode ? 0 : (Math.random() * 200 - 100),
-        // Add fixed positions for stability
-        fx: simNode ? simNode.x * 5 : null,
-        fy: simNode ? simNode.y * 5 : null,
-        fz: null,
-        // Initialize velocities to zero
-        vx: 0,
-        vy: 0,
-        vz: 0
-      };
+        ...link,
+        source: sourceId,
+        target: targetId,
+        isPersonToPerson
+      } as LinkObject;
     });
     
-    const links = filteredLinks.map(link => ({
-      ...link,
-      color: (theme.colors.relationshipColors as Record<string, string>)[link.type],
-      width: (link.strength || 1) * 2,
-      // Ensure source and target are strings (IDs)
-      source: typeof link.source === 'object' ? link.source.id : link.source,
-      target: typeof link.target === 'object' ? link.target.id : link.target
-    }));
+    return {
+      nodes,
+      links,
+      graphData: { nodes, links }
+    };
+  }, [filteredData]);
+  
+  // Function to render node objects
+  const nodeThreeObject = (node: GraphNode3D): THREE.Object3D => {
+    const isSelected = node.id === selectedNodeId;
+    const isHighlighted = highlightedNodeIds.includes(node.id);
     
-    setGraphData({ nodes, links });
-    setInitialized(false);
-  }, [data, filters, selectedNodeId, highlightedNodeIds]);
-
-  // Get node size based on attribute
-  const getNodeSize = (node: GraphNode, links: any[], sizeAttribute: string) => {
-    if (sizeAttribute === 'equal') {
-      return 5;
+    // Check cache first to reduce object creation
+    const cacheKey = `${node.id}-${isSelected}-${isHighlighted}-${colorMode}`;
+    if (nodeObjectCache.has(cacheKey)) {
+      return nodeObjectCache.get(cacheKey)!;
     }
     
-    const nodeLinks = links.filter(
-      link => link.source === node.id || link.target === node.id
-    );
+    // Get color based on node type
+    const color = getNodeColor(node.type, colorMode === 'dark');
     
-    // Scale based on connections (degree)
-    if (sizeAttribute === 'degree') {
-      return Math.max(3, Math.min(8, 3 + nodeLinks.length * 0.5));
+    // Create colored sphere
+    let geometry;
+    if (geometryCache.has('nodeSphere')) {
+      geometry = geometryCache.get('nodeSphere')!;
+    } else {
+      geometry = new THREE.SphereGeometry(isSelected ? 8 : 6);
+      geometryCache.set('nodeSphere', geometry);
     }
     
-    // For betweenness centrality, we'd need to calculate it
-    // This is a simplified approximation
-    if (sizeAttribute === 'betweenness') {
-      const uniqueConnections = new Set();
-      nodeLinks.forEach(link => {
-        const otherId = link.source === node.id ? link.target : link.source;
-        uniqueConnections.add(otherId);
+    // Create material with appropriate color
+    const materialKey = `${color}-${isSelected}-${isHighlighted}`;
+    let material;
+    if (materialCache.has(materialKey)) {
+      material = materialCache.get(materialKey)!;
+    } else {
+      material = new THREE.MeshLambertMaterial({
+        color: color,
+        emissive: isSelected ? color : isHighlighted ? '#888888' : '#111111',
+        emissiveIntensity: isSelected ? 0.5 : isHighlighted ? 0.3 : 0.1,
+        transparent: true,
+        opacity: 0.9
       });
-      return Math.max(3, Math.min(8, 3 + uniqueConnections.size * 0.5));
+      materialCache.set(materialKey, material);
     }
     
-    return 5; // Default
-  };
-
-  // Node object generation
-  const nodeThreeObject = useCallback((node: any) => {
-    // Use a sphere for the node
-    const geometry = new THREE.SphereGeometry(node.size);
-    
-    // Determine color based on selection/highlight state
-    let color = node.color;
-    let opacity = 0.8;
-    
-    if (node.selected) {
-      color = colorMode === 'dark' ? '#ffffff' : '#000000';
-      opacity = 1;
-    } else if (node.highlighted) {
-      color = '#F6E05E'; // Yellow highlight
-      opacity = 0.9;
-    }
-    
-    const material = new THREE.MeshLambertMaterial({
-      color: color,
-      transparent: true,
-      opacity: opacity
-    });
-    
+    // Create mesh
     const mesh = new THREE.Mesh(geometry, material);
     
-    // Add text label
+    // Create label for the node - always show labels
     const label = new SpriteText(node.name);
     label.color = colorMode === 'dark' ? '#ffffff' : '#000000';
-    label.textHeight = 2;
-    label.position.y = node.size + 2;
+    // Always use a light background in dark mode and dark background in light mode for better contrast
+    label.backgroundColor = colorMode === 'dark' ? 
+      (isSelected ? '#4A5568' : 'rgba(45, 55, 72, 0.7)') : 
+      (isSelected ? '#E2E8F0' : 'rgba(226, 232, 240, 0.7)');
+    label.padding = 2;
+    label.textHeight = isSelected ? 5 : 3.5;
+    label.position.y = 10;
     
-    // Create a group to hold both the sphere and the label
-    const group = new THREE.Group();
-    group.add(mesh);
-    group.add(label);
+    // Adjust font weight for better readability
+    label.fontWeight = isSelected ? 'bold' : 'normal';
     
-    return group;
-  }, [colorMode]);
-
+    // Always add the label to show names
+    mesh.add(label);
+    
+    // Cache for reuse
+    nodeObjectCache.set(cacheKey, mesh);
+    
+    return mesh;
+  };
+  
   // Handle node click
-  const handleNodeClick = useCallback((node: any) => {
+  const handleNodeClick = (node: GraphNode3D) => {
     onNodeClick(node);
-  }, [onNodeClick]);
-
+  };
+  
   // Handle node hover
-  const handleNodeHover = useCallback((node: any) => {
-    setHoveredNode(node);
+  const handleNodeHover = (node: GraphNode3D | null) => {
     onNodeHover(node);
-  }, [onNodeHover]);
-
-  // Initialize the 3D graph with stable parameters
+  };
+  
+  // Set up the 3D force graph with optimized renderer settings
   useEffect(() => {
-    if (!graphRef.current || initialized || graphData.nodes.length === 0) return;
-    
-    // Wait for the graph to be rendered
-    setTimeout(() => {
-      if (graphRef.current) {
-        // Configure forces for stability
-        graphRef.current.d3Force('charge', d3.forceManyBody()
-          .strength(-80)
-          .distanceMax(200)
-        );
-        
-        graphRef.current.d3Force('link', d3.forceLink(graphData.links)
-          .id((d: any) => d.id)
-          .distance(50)
-        );
-        
-        graphRef.current.d3Force('center', d3.forceCenter());
-        
-        // Add a custom force to spread nodes in the Z dimension
-        // Since d3.forceZ doesn't exist, we'll create a custom force
-        graphRef.current.d3Force('z-spread', alpha => {
-          const strength = 0.02;
-          graphData.nodes.forEach(node => {
-            if (!node.z) node.z = 0;
-            // Gently push nodes toward z=0 with some randomness
-            const delta = (0 - node.z) * alpha * strength + (Math.random() - 0.5) * alpha;
-            node.vz += delta;
-          });
-        });
-        
-        // Add collision force to prevent overlap
-        graphRef.current.d3Force('collision', d3.forceCollide(10));
-        
-        // Apply layout based on filters
-        if (filters.layout === 'radial') {
-          graphRef.current.d3Force('radial', d3.forceRadial(100).strength(0.8));
+    if (graphRef.current) {
+      const graph = graphRef.current;
+      
+      // Apply optimal WebGL settings
+      if (graph.renderer) {
+        // Manual render loop for better control
+        if (frameRef.current) {
+          cancelAnimationFrame(frameRef.current);
         }
         
-        // Run a gentle reheat
-        graphRef.current.d3ReheatSimulation();
-        
-        // After a short time, release fixed positions to allow some movement
-        setTimeout(() => {
-          if (graphRef.current) {
-            graphData.nodes.forEach(node => {
-              node.fx = null;
-              node.fy = null;
-              node.fz = null;
-            });
-            graphRef.current.d3ReheatSimulation();
+        // Guard against possible undefined renderer methods
+        try {
+          // Check if setPixelRatio exists before calling it
+          if (typeof graph.renderer.setPixelRatio === 'function') {
+            graph.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
           }
-        }, 2000);
+          
+          // Check if setSize exists before calling it
+          if (typeof graph.renderer.setSize === 'function') {
+            graph.renderer.setSize(width, height);
+          }
+        } catch (error) {
+          console.warn('Error configuring renderer:', error);
+        }
         
-        setInitialized(true);
+        // Custom render loop with throttling
+        let lastRenderTime = 0;
+        const renderFrame = (time: number) => {
+          frameRef.current = requestAnimationFrame(renderFrame);
+          
+          // Throttle to max 30fps to save resources
+          if (time - lastRenderTime < 33) { // ~30fps
+            return;
+          }
+          
+          lastRenderTime = time;
+          if (graph.scene && graph.camera && typeof graph.renderer.render === 'function') {
+            try {
+              graph.renderer.render(graph.scene, graph.camera);
+            } catch (error) {
+              console.warn('Error rendering 3D graph:', error);
+              // Don't cancel animation frame to allow recovery on next tick
+            }
+          }
+        };
+        
+        frameRef.current = requestAnimationFrame(renderFrame);
       }
-    }, 500);
-  }, [graphData, filters.layout, initialized]);
-
+      
+      // Optimize but don't over-optimize physics
+      if (graph.d3Force && typeof graph.d3Force === 'function') {
+        try {
+          const charge = graph.d3Force('charge');
+          if (charge && typeof charge.strength === 'function') {
+            charge.strength(-120);
+          }
+        } catch (error) {
+          console.warn('Error configuring d3Force:', error);
+        }
+      }
+      
+      // Fix controls for smoother zooming
+      if (graph.controls) {
+        try {
+          graph.controls.enableDamping = true;
+          graph.controls.dampingFactor = 0.15;
+          graph.controls.rotateSpeed = 0.7;
+          graph.controls.zoomSpeed = 0.8;
+          graph.controls.minDistance = 10;
+          graph.controls.maxDistance = 500;
+        } catch (error) {
+          console.warn('Error configuring controls:', error);
+        }
+      }
+    }
+  }, [width, height]);
+  
+  // Cleanup 3D objects on component update
+  useEffect(() => {
+    if (!isMountedRef.current) return;
+    
+    // Provide smooth cleanup of nodes/links not in current render
+    const currentNodeIds = new Set(nodes.map(n => n.id));
+    const currentLinkIds = new Set(links.map(l => `${typeof l.source === 'object' ? l.source.id : l.source}-${typeof l.target === 'object' ? l.target.id : l.target}`));
+    
+    // Clear caches of removed objects
+    nodeObjectCache.forEach((obj, key) => {
+      const [nodeId] = key.split('-');
+      if (!currentNodeIds.has(nodeId)) {
+        disposeObject(obj);
+        nodeObjectCache.delete(key);
+      }
+    });
+    
+    linkObjectCache.forEach((obj, key) => {
+      const [sourceId, targetId] = key.split('-');
+      const linkId = `${sourceId}-${targetId}`;
+      if (!currentLinkIds.has(linkId)) {
+        disposeObject(obj);
+        linkObjectCache.delete(key);
+      }
+    });
+  }, [nodes, links, isMountedRef]);
+  
   return (
-    <Box width="100%" height="100%" position="relative">
-      {graphData.nodes.length > 0 && (
+    <Box width={width} height={height} position="relative">
+      {nodes.length > 0 ? (
         <ForceGraph3D
           ref={graphRef}
-          graphData={graphData}
+          graphData={graphData as any}
           width={width}
           height={height}
           backgroundColor={colorMode === 'dark' ? '#1A202C' : '#F7FAFC'}
           nodeThreeObject={nodeThreeObject}
+          linkColor={link => getLinkColor((link as LinkObject).type, colorMode === 'dark')}
+          linkWidth={link => (link as LinkObject).isPersonToPerson ? 3 : 1.5}
+          linkOpacity={0.8}
+          linkDirectionalParticles={4}
+          linkDirectionalParticleWidth={link => (link as LinkObject).isPersonToPerson ? 3 : 2}
+          linkDirectionalParticleColor={link => getLinkColor((link as LinkObject).type, colorMode === 'dark')}
+          linkDirectionalParticleSpeed={0.006}
           onNodeClick={handleNodeClick}
           onNodeHover={handleNodeHover}
-          enableNodeDrag={true}
-          enableNavigationControls={true}
-          showNavInfo={false}
-          controlType="orbit"
-          cooldownTicks={300}
-          numDimensions={3}
-          // Stable camera settings
-          cameraPosition={{ x: 0, y: 0, z: 200 }}
-          // Gentle animation
-          enablePointerInteraction={true}
-          // Damping to reduce oscillations
-          d3VelocityDecay={0.4}
+          nodeVal={node => node.id === selectedNodeId ? 8 : highlightedNodeIds.includes(node.id) ? 7 : 5}
+          cooldownTime={3000}
+          d3AlphaDecay={0.02}
+          d3VelocityDecay={0.3}
+          warmupTicks={100}
+          cooldownTicks={100}
+          nodeOpacity={0.9}
+          nodeResolution={16} // Higher resolution for smoother spheres
+          onNodeDragEnd={node => {
+            // Fix node position on drag end
+            if (node) {
+              node.fx = node.x;
+              node.fy = node.y;
+              node.fz = node.z;
+            }
+          }}
         />
+      ) : (
+        <Box 
+          width="100%" 
+          height="100%" 
+          display="flex" 
+          alignItems="center" 
+          justifyContent="center"
+          color={colorMode === 'dark' ? 'gray.300' : 'gray.600'}
+        >
+          No data to display with current filters
+        </Box>
       )}
     </Box>
   );
 };
 
 export default ForceGraph3DComponent;
+

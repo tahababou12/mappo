@@ -4,7 +4,6 @@ import {
   Flex,
   Text,
   Input,
-  Button,
   Avatar,
   VStack,
   HStack,
@@ -21,7 +20,7 @@ import {
   Divider,
   Badge,
 } from '@chakra-ui/react';
-import { MessageCircle, Send, User, Bot, X, Maximize2, Minimize2, Calendar, MapPin, Book } from 'lucide-react';
+import { MessageCircle, Send, User, Bot, Maximize2, Minimize2 } from 'lucide-react';
 import { Entity } from '../../types';
 
 interface ChatbotInterfaceProps {
@@ -43,7 +42,7 @@ const WELCOME_MESSAGE = {
   text: "Welcome to the Historical Network Analysis Assistant! I can help you explore the network, find connections between historical figures, and answer questions about their relationships. Try asking something like 'Tell me about William Wordsworth' or 'What was the relationship between Wordsworth and Coleridge?'",
   timestamp: new Date(),
   entities: []
-};
+} as Message;
 
 const SUGGESTIONS = [
   "Who was William Wordsworth?",
@@ -425,7 +424,7 @@ const ChatbotInterface: React.FC<ChatbotInterfaceProps> = ({ entities, onSelectE
         </DrawerContent>
       </Drawer>
       
-      <style jsx>{`
+      <style dangerouslySetInnerHTML={{__html: `
         .typing-animation {
           display: inline-block;
           animation: ellipsis 1.5s infinite;
@@ -436,7 +435,7 @@ const ChatbotInterface: React.FC<ChatbotInterfaceProps> = ({ entities, onSelectE
           33% { content: '..'; }
           66% { content: '...'; }
         }
-      `}</style>
+      `}} />
     </>
   );
 };

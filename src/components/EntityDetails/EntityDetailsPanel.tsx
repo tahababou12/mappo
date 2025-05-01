@@ -12,8 +12,6 @@ import {
   useColorMode,
   IconButton,
   Tooltip,
-  Grid,
-  Link,
 } from '@chakra-ui/react';
 import { X, ExternalLink, MapPin, Book, Calendar } from 'lucide-react';
 import { Entity, Relationship, EntityType } from '../../types';
@@ -58,7 +56,9 @@ const EntityDetailsPanel: React.FC<EntityDetailsPanelProps> = ({
         month: 'short', 
         day: 'numeric' 
       });
-    } catch (e) {
+    } catch {
+      // Log error or handle differently if needed
+      console.warn(`Could not parse date: ${dateStr}`);
       return dateStr;
     }
   };
@@ -76,14 +76,23 @@ const EntityDetailsPanel: React.FC<EntityDetailsPanelProps> = ({
 
   // Get locations from metadata
   const getLocations = () => {
-    if (entity.metadata.locations) {
-      const locationsStr = entity.metadata.locations as string;
-      return [...new Set(locationsStr.split(',').map(loc => loc.trim()))];
+    // Check if entity and metadata and locations exist and is an array
+    if (entity && entity.metadata && Array.isArray(entity.metadata.locations)) {
+      // Directly return the array of unique locations
+      return [...new Set(entity.metadata.locations as string[])];
     }
-    return [];
+    // Handle case where it might be a string (legacy or incorrect data)
+    if (entity && entity.metadata && typeof entity.metadata.locations === 'string') {
+        console.warn("Locations metadata is a string, expected string[]. Attempting to parse.");
+        const locationsStr = entity.metadata.locations as string;
+        return [...new Set(locationsStr.split(',').map(loc => loc.trim()).filter(Boolean))];
+    }
+    return []; // Return empty array if no valid locations data found
   };
 
   const locations = getLocations();
+  // Compute metadata entries excluding 'locations' safely
+  const otherMetadataEntries = Object.entries(entity.metadata || {}).filter(([key]) => key !== 'locations');
 
   return (
     <Box 
@@ -149,22 +158,20 @@ const EntityDetailsPanel: React.FC<EntityDetailsPanelProps> = ({
         </Box>
       )}
       
-      {Object.entries(entity.metadata).filter(([key]) => key !== 'locations').length > 0 && (
+      {otherMetadataEntries.length > 0 && (
         <Box mb={4}>
           <Heading size="sm" mb={2}>Additional Information</Heading>
           <List spacing={1}>
-            {Object.entries(entity.metadata)
-              .filter(([key]) => key !== 'locations')
-              .map(([key, value]) => (
-                <ListItem key={key}>
-                  <Flex>
-                    <Text fontSize="sm" fontWeight="semibold" width="120px" textTransform="capitalize">
-                      {key}:
-                    </Text>
-                    <Text fontSize="sm">{value.toString()}</Text>
-                  </Flex>
-                </ListItem>
-              ))}
+            {otherMetadataEntries.map(([key, value]) => (
+              <ListItem key={key}>
+                <Flex>
+                  <Text fontSize="sm" fontWeight="semibold" width="120px" textTransform="capitalize">
+                    {key}:
+                  </Text>
+                  <Text fontSize="sm">{value.toString()}</Text>
+                </Flex>
+              </ListItem>
+            ))}
           </List>
         </Box>
       )}

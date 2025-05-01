@@ -75,16 +75,17 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
   const [filters, setFilters] = useState<FilterState>({
     entityTypes: {
       person: true,
-      organization: true,
-      event: true,
-      location: true
+      organization: false,
+      event: false,
+      location: false
     },
     relationshipTypes: {
       family: true,
       professional: true,
       social: true,
       political: true,
-      conflict: true
+      conflict: true,
+      cultural: true
     },
     timeRange: [1800, 1900],
     showCommunities: false,

@@ -1,5 +1,5 @@
 export type EntityType = 'person' | 'organization' | 'event' | 'location';
-export type RelationshipType = 'family' | 'professional' | 'social' | 'political' | 'conflict';
+export type RelationshipType = 'family' | 'professional' | 'social' | 'political' | 'conflict' | 'cultural';
 export type LayoutType = 'force' | 'radial' | 'hierarchical';
 
 export interface Entity {
@@ -9,7 +9,7 @@ export interface Entity {
   startDate?: string;
   endDate?: string;
   description?: string;
-  metadata: Record<string, string | number | boolean>;
+  metadata: Record<string, string | number | boolean | string[]>;
 }
 
 export interface Relationship {
@@ -21,7 +21,7 @@ export interface Relationship {
   endDate?: string;
   description?: string;
   strength?: number;
-  metadata?: Record<string, string | number | boolean>;
+  metadata?: Record<string, string | number | boolean | string[] | undefined>;
 }
 
 export interface GraphData {

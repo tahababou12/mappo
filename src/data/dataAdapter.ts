@@ -1,4 +1,4 @@
-import { GraphData, Entity, Relationship, EntityType, RelationshipType } from '../types';
+import { GraphData, Entity, Relationship, RelationshipType } from '../types';
 
 // Define the structure of the input data
 interface HistoricalRecord {
@@ -14,311 +14,241 @@ interface HistoricalRecord {
   Bibliography: string;
 }
 
-// Map action types to relationship types
-const actionToRelationshipType = (action: string): RelationshipType => {
-  const actionLower = action.toLowerCase();
+// Extract unique relationship types from the data
+function extractRelationshipTypes(records: HistoricalRecord[]): Record<string, RelationshipType> {
+  const uniqueActionTypes = new Set<string>();
+  const actionTypeMap: Record<string, RelationshipType> = {};
   
-  if (actionLower.includes('writing') || actionLower.includes('letter')) {
-    return 'professional';
-  } else if (actionLower.includes('meeting') || actionLower.includes('visit')) {
-    return 'social';
-  } else if (actionLower.includes('family') || actionLower.includes('marriage')) {
-    return 'family';
-  } else if (actionLower.includes('political') || actionLower.includes('election')) {
-    return 'political';
-  } else if (actionLower.includes('conflict') || actionLower.includes('dispute')) {
-    return 'conflict';
-  }
+  // Extract all non-empty action types
+  records.forEach(record => {
+    if (record['Type of action'] && record['Type of action'].trim()) {
+      uniqueActionTypes.add(record['Type of action'].trim());
+    }
+  });
   
-  // Default to professional if no match
-  return 'professional';
-};
+  // Map each unique action type to a relationship type
+  uniqueActionTypes.forEach(actionType => {
+    // Default mapping logic - can be customized based on your domain knowledge
+    const lowerAction = actionType.toLowerCase();
+    
+    if (lowerAction.includes('writing') || lowerAction.includes('reading') || 
+        lowerAction.includes('working') || lowerAction.includes('commission') || 
+        lowerAction.includes('lecturing') || lowerAction.includes('studying') ||
+        lowerAction.includes('painting') || lowerAction.includes('assisting')) {
+      actionTypeMap[actionType] = 'professional';
+    } 
+    else if (lowerAction.includes('meeting') || lowerAction.includes('introduction') || 
+             lowerAction.includes('talking') || lowerAction.includes('visiting') ||
+             lowerAction.includes('speaking')) {
+      actionTypeMap[actionType] = 'social';
+    }
+    else if (lowerAction.includes('viewing') || lowerAction.includes('acquires') || 
+             lowerAction.includes('buying') || lowerAction.includes('sends')) {
+      actionTypeMap[actionType] = 'cultural';
+    }
+    else {
+      // Default fallback
+      actionTypeMap[actionType] = 'social';
+    }
+  });
+  
+  return actionTypeMap;
+}
 
-// Determine entity type (simplified for demo)
-const determineEntityType = (name: string): EntityType => {
-  // This is a simplified approach - in a real application, you would have more sophisticated logic
-  // or a predefined mapping of entities to types
+// Convert historical records to graph data format
+export function convertToGraphData(records: HistoricalRecord[]): GraphData {
+  console.log(`Converting ${records.length} records to graph data`);
   
-  // For demo purposes, we'll consider entities with common location names as locations
-  const locationKeywords = ['london', 'paris', 'york', 'edinburgh', 'rydal'];
-  if (locationKeywords.some(keyword => name.toLowerCase().includes(keyword))) {
-    return 'location';
-  }
-  
-  // For demo purposes, consider entities with organization keywords as organizations
-  const orgKeywords = ['society', 'association', 'club', 'university', 'college', 'school'];
-  if (orgKeywords.some(keyword => name.toLowerCase().includes(keyword))) {
-    return 'organization';
-  }
-  
-  // For demo purposes, consider entities with event keywords as events
-  const eventKeywords = ['war', 'battle', 'conference', 'exhibition', 'meeting'];
-  if (eventKeywords.some(keyword => name.toLowerCase().includes(keyword))) {
-    return 'event';
-  }
-  
-  // Default to person
-  return 'person';
-};
-
-// Convert historical records to graph data
-export const convertToGraphData = (records: HistoricalRecord[]): GraphData => {
   const entities = new Map<string, Entity>();
   const relationships = new Map<string, Relationship>();
   
-  // Process each record
-  records.forEach((record, index) => {
-    // Process source entity
-    if (!entities.has(record.Source)) {
-      entities.set(record.Source, {
-        id: record.Source,
-        name: record.Source,
-        type: determineEntityType(record.Source),
-        metadata: {}
-      });
-    }
-    
-    // Process target entity
-    if (!entities.has(record.Target)) {
-      entities.set(record.Target, {
-        id: record.Target,
-        name: record.Target,
-        type: determineEntityType(record.Target),
-        metadata: {}
-      });
-    }
-    
-    // Create relationship
-    const relationshipId = `rel-${index}`;
-    const relationshipType = actionToRelationshipType(record['Type of action']);
-    
-    relationships.set(relationshipId, {
-      id: relationshipId,
-      source: record.Source,
-      target: record.Target,
-      type: relationshipType,
-      startDate: record['Start date'],
-      endDate: record['End date'],
-      description: record.Event,
-      strength: 1 // Default strength
-    });
-    
-    // Update entity metadata with location information if available
-    if (record.Location) {
-      const sourceEntity = entities.get(record.Source);
-      if (sourceEntity) {
-        sourceEntity.metadata.locations = sourceEntity.metadata.locations 
-          ? `${sourceEntity.metadata.locations}, ${record.Location}`
-          : record.Location;
-      }
-      
-      const targetEntity = entities.get(record.Target);
-      if (targetEntity) {
-        targetEntity.metadata.locations = targetEntity.metadata.locations 
-          ? `${targetEntity.metadata.locations}, ${record.Location}`
-          : record.Location;
+  // Extract relationship types dynamically from the data
+  const actionToRelationshipType = extractRelationshipTypes(records);
+  
+  // First pass: collect all entities from both source and target
+  records.forEach(record => {
+    // Extract sources and targets
+    if (record.Source && record.Source.trim()) {
+      const sourceId = generateId(record.Source);
+      if (!entities.has(sourceId)) {
+        entities.set(sourceId, {
+          id: sourceId,
+          name: record.Source.trim(),
+          type: "person", // Default to person type
+          startDate: record['Start date'] || undefined,
+          endDate: record['End date'] || undefined,
+          description: "",
+          metadata: {
+            events: [] as string[],
+            locations: [] as string[],
+            bibliography: [] as string[]
+          }
+        });
       }
     }
     
-    // Add bibliography information to relationship
-    if (record.Bibliography) {
-      const relationship = relationships.get(relationshipId);
-      if (relationship) {
-        relationship.metadata = relationship.metadata || {};
-        relationship.metadata.bibliography = record.Bibliography;
+    if (record.Target && record.Target.trim()) {
+      const targetId = generateId(record.Target);
+      if (!entities.has(targetId)) {
+        entities.set(targetId, {
+          id: targetId,
+          name: record.Target.trim(),
+          type: "person", // Default to person type
+          startDate: record['Start date'] || undefined,
+          endDate: record['End date'] || undefined,
+          description: "",
+          metadata: {
+            events: [] as string[],
+            locations: [] as string[],
+            bibliography: [] as string[]
+          }
+        });
       }
     }
   });
   
+  console.log(`Created ${entities.size} entities from source/target fields`);
+  
+  // Log the first 10 entities to verify data
+  const entitySample = Array.from(entities.values()).slice(0, 10);
+  console.log('Sample entities:', entitySample.map(e => e.name));
+  
+  // Second pass: create relationships and update entity metadata
+  const totalRecords = records.length;
+  
+  records.forEach((record, index) => {
+    // Log progress every 100 records
+    if (index % 100 === 0) {
+      console.log(`Processing relationships: ${index}/${totalRecords} (${((index/totalRecords)*100).toFixed(1)}%)`);
+    }
+    
+    if (!record.Source || !record.Target) return;
+    
+    const sourceId = generateId(record.Source);
+    const targetId = generateId(record.Target);
+    
+    // Skip if we don't have both entities
+    if (!entities.has(sourceId) || !entities.has(targetId)) return;
+    
+    // Get the entities
+    const sourceEntity = entities.get(sourceId)!;
+    const targetEntity = entities.get(targetId)!;
+    
+    // Add event to metadata if not empty
+    if (record.Event) {
+      // Safely type-cast the arrays
+      const sourceEvents = sourceEntity.metadata.events as string[];
+      const targetEvents = targetEntity.metadata.events as string[];
+      
+      if (!sourceEvents.includes(record.Event)) {
+        sourceEntity.metadata.events = [...sourceEvents, record.Event];
+      }
+      if (!targetEvents.includes(record.Event)) {
+        targetEntity.metadata.events = [...targetEvents, record.Event];
+      }
+    }
+    
+    // Add location to metadata if not empty
+    if (record.Location) {
+      // Safely type-cast the arrays
+      const sourceLocations = sourceEntity.metadata.locations as string[];
+      const targetLocations = targetEntity.metadata.locations as string[];
+      
+      if (!sourceLocations.includes(record.Location)) {
+        sourceEntity.metadata.locations = [...sourceLocations, record.Location];
+      }
+      if (!targetLocations.includes(record.Location)) {
+        targetEntity.metadata.locations = [...targetLocations, record.Location];
+      }
+    }
+    
+    // Add bibliography to metadata if not empty
+    if (record.Bibliography) {
+      // Safely type-cast the arrays
+      const sourceBibliography = sourceEntity.metadata.bibliography as string[];
+      const targetBibliography = targetEntity.metadata.bibliography as string[];
+      
+      if (!sourceBibliography.includes(record.Bibliography)) {
+        sourceEntity.metadata.bibliography = [...sourceBibliography, record.Bibliography];
+      }
+      if (!targetBibliography.includes(record.Bibliography)) {
+        targetEntity.metadata.bibliography = [...targetBibliography, record.Bibliography];
+      }
+    }
+    
+    // Create relationship
+    const relationshipId = `${sourceId}-${targetId}-${generateId(record.Event || 'unknown')}`;
+    if (!relationships.has(relationshipId)) {
+      const relationshipType = actionToRelationshipTypeMapping(record['Type of action'], actionToRelationshipType);
+      
+      relationships.set(relationshipId, {
+        id: relationshipId,
+        source: sourceId,
+        target: targetId,
+        type: relationshipType,
+        startDate: record['Start date'] || undefined,
+        endDate: record['End date'] || undefined,
+        description: record.Event || "",
+        strength: 1,
+        metadata: {
+          location: record.Location || "",
+          bibliography: record.Bibliography || "",
+          actionType: record['Type of action'] || ""
+        }
+      });
+    }
+  });
+  
+  // Convert maps to arrays
+  const nodeArray = Array.from(entities.values());
+  const linkArray = Array.from(relationships.values());
+  
+  // Log detailed stats
+  console.log(`Created ${nodeArray.length} nodes and ${linkArray.length} links`);
+  
+  // Log sample of relationships to verify data
+  console.log('Sample relationships:', linkArray.slice(0, 5).map(link => ({
+    source: nodeArray.find(n => n.id === link.source)?.name || link.source,
+    target: nodeArray.find(n => n.id === link.target)?.name || link.target,
+    type: link.type
+  })));
+  
+  // Log conversion stats
+  console.log(`Converted data: ${nodeArray.length} nodes, ${linkArray.length} links`);
+  
   return {
-    nodes: Array.from(entities.values()),
-    links: Array.from(relationships.values())
+    nodes: nodeArray,
+    links: linkArray
   };
+}
+
+// Helper function to generate consistent IDs from names
+function generateId(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+}
+
+// Helper function to map action types to relationship types
+function actionToRelationshipTypeMapping(action: string, actionMap: Record<string, RelationshipType>): RelationshipType {
+  const normalizedAction = action ? action.trim() : "";
+  return normalizedAction && actionMap[normalizedAction] ? actionMap[normalizedAction] : "social";
+}
+
+// Sample historical data for testing/fallback
+export const sampleHistoricalGraphData: GraphData = {
+  nodes: [
+    { id: "john-ruskin", name: "John Ruskin", type: "person", startDate: "1819-02-08", endDate: "1900-01-20", description: "English art critic and social thinker", metadata: { profession: "Writer, Critic", nationality: "English" } },
+    { id: "william-wordsworth", name: "William Wordsworth", type: "person", startDate: "1770-04-07", endDate: "1850-04-23", description: "English Romantic poet", metadata: { profession: "Poet", nationality: "English" } },
+    { id: "literary-society", name: "Literary Society", type: "organization", startDate: "1800", description: "Intellectual circle in Victorian England", metadata: { type: "Cultural Organization", country: "England" } },
+    { id: "pre-raphaelite-brotherhood", name: "Pre-Raphaelite Brotherhood", type: "organization", startDate: "1848", description: "Group of English painters, poets, and critics", metadata: { type: "Art Movement", country: "England" } },
+    { id: "london", name: "London", type: "location", description: "Capital city of England", metadata: { country: "England", type: "Capital City" } },
+    { id: "lake-district", name: "Lake District", type: "location", description: "Mountainous region in North West England", metadata: { country: "England", type: "Region" } }
+  ],
+  links: [
+    { id: "1", source: "john-ruskin", target: "william-wordsworth", type: "social", description: "Intellectual influence" },
+    { id: "2", source: "john-ruskin", target: "literary-society", type: "professional", description: "Membership" },
+    { id: "3", source: "john-ruskin", target: "pre-raphaelite-brotherhood", type: "professional", description: "Championed the movement" },
+    { id: "4", source: "john-ruskin", target: "london", type: "social", description: "Lived and worked in" },
+    { id: "5", source: "william-wordsworth", target: "lake-district", type: "social", description: "Lived and wrote about" },
+    { id: "6", source: "william-wordsworth", target: "literary-society", type: "professional", description: "Influential member" }
+  ]
 };
-
-// Sample data based on the provided structure
-export const sampleHistoricalRecords: HistoricalRecord[] = [
-  {
-    Source: "Aitchison",
-    Target: "John Ruskin",
-    Event: "In the memorial for Ruskin after his death presented to Dean and Chapter of Westminster Abbey",
-    "Start date": "1900-01-25",
-    "End date": "1900-01-25",
-    Location: "London, England",
-    lon: "51.507222",
-    lat: "-0.1275",
-    "Type of action": "Writing",
-    Bibliography: "The Complete Works of John Ruskin"
-  },
-  {
-    Source: "Arthur Sullivan",
-    Target: "John Ruskin",
-    Event: "In the memorial for Ruskin after his death presented to Dean and Chapter of Westminster Abbey",
-    "Start date": "1900-01-25",
-    "End date": "1900-01-25",
-    Location: "London, England",
-    lon: "51.507222",
-    lat: "-0.1275",
-    "Type of action": "Writing",
-    Bibliography: "The Complete Works of John Ruskin"
-  },
-  {
-    Source: "Atkinson",
-    Target: "William Wordsworth",
-    Event: "Atkinson wrote to Wordsworth asking for a contribution to a volume of poetry",
-    "Start date": "1845-05-25",
-    "End date": "1845-05-25",
-    Location: "Rydal, England",
-    lon: "54.4488",
-    lat: "-2.9984",
-    "Type of action": "Writing",
-    Bibliography: "Wordsworth and His Circle"
-  },
-  {
-    Source: "Bancroft",
-    Target: "William Wordsworth",
-    Event: "Bancroft visited Wordsworth's home",
-    "Start date": "1848-08-01",
-    "End date": "1848-08-01",
-    Location: "Rydal, England",
-    lon: "54.4488",
-    lat: "-2.9984",
-    "Type of action": "Meeting",
-    Bibliography: "Wordsworth and His Circle"
-  },
-  {
-    Source: "Bronson Alcott",
-    Target: "William Wordsworth",
-    Event: "Alcott called in Wordsworth home, but he wasn't there",
-    "Start date": "1849-08-01",
-    "End date": "1849-08-01",
-    Location: "Rydal, England",
-    lon: "54.4488",
-    lat: "-2.9984",
-    "Type of action": "Meeting",
-    Bibliography: "Wordsworth and His Circle"
-  },
-  {
-    Source: "Bronson Alcott",
-    Target: "William Wordsworth",
-    Event: "Alcott delivered to Wordsworth Elizabeth Peabody's letter",
-    "Start date": "1842-05-07",
-    "End date": "1842-05-07",
-    Location: "Rydal, England",
-    lon: "54.4488",
-    lat: "-2.9984",
-    "Type of action": "Meeting",
-    Bibliography: "Wordsworth and His Circle"
-  },
-  {
-    Source: "Charles Dickens",
-    Target: "William Wordsworth",
-    Event: "Dickens and Wordsworth met at a literary dinner",
-    "Start date": "1843-06-12",
-    "End date": "1843-06-12",
-    Location: "London, England",
-    lon: "51.507222",
-    lat: "-0.1275",
-    "Type of action": "Meeting",
-    Bibliography: "Literary London"
-  },
-  {
-    Source: "John Keats",
-    Target: "William Wordsworth",
-    Event: "Keats met Wordsworth at Haydon's dinner party",
-    "Start date": "1817-12-28",
-    "End date": "1817-12-28",
-    Location: "London, England",
-    lon: "51.507222",
-    lat: "-0.1275",
-    "Type of action": "Meeting",
-    Bibliography: "Keats and His Circle"
-  },
-  {
-    Source: "Samuel Taylor Coleridge",
-    Target: "William Wordsworth",
-    Event: "Coleridge and Wordsworth collaborated on Lyrical Ballads",
-    "Start date": "1798-01-01",
-    "End date": "1798-12-31",
-    Location: "Somerset, England",
-    lon: "51.1051",
-    lat: "-2.9260",
-    "Type of action": "Writing",
-    Bibliography: "Coleridge and Wordsworth: A Lyrical Friendship"
-  },
-  {
-    Source: "Dorothy Wordsworth",
-    Target: "William Wordsworth",
-    Event: "Dorothy kept journals of their daily life and travels",
-    "Start date": "1800-01-01",
-    "End date": "1803-12-31",
-    Location: "Lake District, England",
-    lon: "54.4609",
-    lat: "-3.0886",
-    "Type of action": "Family",
-    Bibliography: "The Grasmere Journals"
-  },
-  {
-    Source: "Ralph Waldo Emerson",
-    Target: "Thomas Carlyle",
-    Event: "Emerson visited Carlyle at his home in Scotland",
-    "Start date": "1833-08-26",
-    "End date": "1833-08-26",
-    Location: "Craigenputtock, Scotland",
-    lon: "55.1644",
-    lat: "-3.8661",
-    "Type of action": "Meeting",
-    Bibliography: "The Correspondence of Emerson and Carlyle"
-  },
-  {
-    Source: "John Stuart Mill",
-    Target: "Thomas Carlyle",
-    Event: "Mill accidentally burned the manuscript of Carlyle's 'The French Revolution'",
-    "Start date": "1835-03-06",
-    "End date": "1835-03-06",
-    Location: "London, England",
-    lon: "51.507222",
-    lat: "-0.1275",
-    "Type of action": "Conflict",
-    Bibliography: "Carlyle: A Biography"
-  },
-  {
-    Source: "Charles Dickens",
-    Target: "John Forster",
-    Event: "Dickens appointed Forster as his literary executor",
-    "Start date": "1869-05-12",
-    "End date": "1869-05-12",
-    Location: "London, England",
-    lon: "51.507222",
-    lat: "-0.1275",
-    "Type of action": "Professional",
-    Bibliography: "The Life of Charles Dickens"
-  },
-  {
-    Source: "Elizabeth Barrett",
-    Target: "Robert Browning",
-    Event: "Barrett and Browning exchanged letters before meeting",
-    "Start date": "1845-01-10",
-    "End date": "1845-05-20",
-    Location: "London, England",
-    lon: "51.507222",
-    lat: "-0.1275",
-    "Type of action": "Writing",
-    Bibliography: "The Courtship of Robert Browning and Elizabeth Barrett"
-  },
-  {
-    Source: "Elizabeth Barrett",
-    Target: "Robert Browning",
-    Event: "Barrett and Browning married secretly",
-    "Start date": "1846-09-12",
-    "End date": "1846-09-12",
-    Location: "London, England",
-    lon: "51.507222",
-    lat: "-0.1275",
-    "Type of action": "Family",
-    Bibliography: "The Barretts of Wimpole Street"
-  }
-];
-
-// Generate graph data from sample records
-export const sampleHistoricalGraphData = convertToGraphData(sampleHistoricalRecords);

@@ -30,6 +30,7 @@ const colors = {
     social: '#B794F4',
     political: '#F6E05E',
     conflict: '#F56565',
+    cultural: '#63B3ED',
   },
 };
 

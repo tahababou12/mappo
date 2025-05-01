@@ -66,7 +66,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ filters, onFilterChange }) 
     onFilterChange({ showCommunities: e.target.checked });
   };
 
-  const resetFilters = () => {
+  const resetAllFilters = () => {
     onFilterChange({
       entityTypes: {
         person: true,
@@ -79,12 +79,56 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ filters, onFilterChange }) 
         professional: true,
         social: true,
         political: true,
-        conflict: true
+        conflict: true,
+        cultural: true
+      }
+    });
+  };
+
+  const resetFilters = () => {
+    onFilterChange({
+      entityTypes: {
+        person: true,
+        organization: false,
+        event: false,
+        location: false
+      },
+      relationshipTypes: {
+        family: true,
+        professional: true,
+        social: true,
+        political: true,
+        conflict: true,
+        cultural: true
       },
       timeRange: [1800, 1900],
       showCommunities: false,
       layout: 'force',
       nodeSizeAttribute: 'degree'
+    });
+  };
+
+  const showAllRelationships = () => {
+    onFilterChange({
+      relationshipTypes: {
+        family: true,
+        professional: true,
+        social: true,
+        political: true,
+        conflict: true,
+        cultural: true
+      }
+    });
+  };
+
+  const showAllEntityTypes = () => {
+    onFilterChange({
+      entityTypes: {
+        person: true,
+        organization: true,
+        event: true,
+        location: true
+      }
     });
   };
 
@@ -109,6 +153,14 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ filters, onFilterChange }) 
             {colorMode === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           </Button>
         </Flex>
+        
+        <Button 
+          onClick={resetAllFilters} 
+          size="sm" 
+          colorScheme={colorMode === 'dark' ? 'blue' : 'brand'}
+        >
+          Show All Nodes & Links
+        </Button>
         
         <Divider />
         
@@ -189,14 +241,34 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ filters, onFilterChange }) 
           </AccordionItem>
         </Accordion>
         
-        <Button 
-          onClick={resetFilters} 
-          size="sm" 
-          colorScheme={colorMode === 'dark' ? 'blue' : 'brand'}
-          variant="outline"
-        >
-          Reset Filters
-        </Button>
+        <Flex direction="column" gap={2}>
+          <Button 
+            onClick={resetFilters} 
+            size="sm" 
+            colorScheme={colorMode === 'dark' ? 'blue' : 'brand'}
+            variant="outline"
+          >
+            Reset All Filters
+          </Button>
+
+          <Button 
+            onClick={showAllRelationships} 
+            size="sm" 
+            colorScheme={colorMode === 'dark' ? 'blue' : 'brand'}
+            variant="outline"
+          >
+            Show All Relationships
+          </Button>
+
+          <Button 
+            onClick={showAllEntityTypes} 
+            size="sm" 
+            colorScheme={colorMode === 'dark' ? 'blue' : 'brand'}
+            variant="outline"
+          >
+            Show All Entity Types
+          </Button>
+        </Flex>
       </VStack>
     </Box>
   );
