@@ -85,6 +85,7 @@ const GraphContainer: React.FC<GraphContainerProps> = ({
   // Adapter function to handle node clicks (converts GraphNode to string ID)
   const handleNodeClick = useCallback((node: GraphNode) => {
     if (node && node.id) {
+      console.log("GraphContainer: Node clicked:", node.id);
       onNodeSelect(node.id);
     }
   }, [onNodeSelect]);
@@ -304,10 +305,10 @@ const GraphContainer: React.FC<GraphContainerProps> = ({
         />
       )}
       
-      <GraphLegend 
+      {/* <GraphLegend 
         showEntityTypes={true} 
         showRelationshipTypes={true} 
-      />
+      /> */}
       
       <Flex position="absolute" top="4" right="4" zIndex="10" gap="2">
         <Button

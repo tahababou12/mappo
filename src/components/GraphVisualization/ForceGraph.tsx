@@ -4,6 +4,17 @@ import { Box, useColorMode } from '@chakra-ui/react';
 import { GraphData, GraphNode, GraphLink, FilterState, EntityType, RelationshipType } from '../../types';
 import theme from '../../theme';
 
+// Add _connectedNodeIds to the existing GraphNode
+interface ExtendedGraphNode extends GraphNode {
+  _connectedNodeIds?: Set<string>;
+}
+
+// Add _sourceId and _targetId properties to the existing GraphLink
+interface ExtendedGraphLink extends GraphLink {
+  _sourceId?: string;
+  _targetId?: string;
+}
+
 interface ForceGraphProps {
   data: GraphData;
   filters: FilterState;
@@ -113,7 +124,7 @@ const ForceGraph: React.FC<ForceGraphProps> = ({
   useEffect(() => {
     if (!svgRef.current) return;
     
-    console.log("ForceGraph: Redrawing graph with", filteredData.nodes.length, "nodes and", filteredData.links.length, "links");
+    // console.log("ForceGraph: Redrawing graph with", filteredData.nodes.length, "nodes and", filteredData.links.length, "links");
 
     // Clear previous graph
     d3.select(svgRef.current).selectAll('*').remove();
@@ -192,7 +203,7 @@ const ForceGraph: React.FC<ForceGraphProps> = ({
       .attr('stroke-opacity', 0.6)
       .attr('class', 'links-group') // Add class for easier selection
       .selectAll('path')
-      .data(filteredData.links)
+      .data(filteredData.links as ExtendedGraphLink[])
       .join('path')
       .attr('class', 'link') // Add class for easier selection
       .attr('stroke-width', d => (d.strength || 1) * 1.5)
@@ -209,27 +220,6 @@ const ForceGraph: React.FC<ForceGraphProps> = ({
         return null;
       })
       .attr('fill', 'none')
-      .style('visibility', 'visible') // Force visibility to be always visible
-      .style('opacity', d => {
-        // If a node is selected, highlight its connected links
-        if (selectedNodeId) {
-          const sourceId = typeof d.source === 'object' ? d.source.id : d.source;
-          const targetId = typeof d.target === 'object' ? d.target.id : d.target;
-          
-          // Show links connected to the selected node with full opacity
-          const isConnected = sourceId === selectedNodeId || targetId === selectedNodeId;
-          return isConnected ? 1.0 : 0.1; // Connected links are visible, others faded
-        }
-        
-        // Apply relationship type filter by adjusting opacity rather than removing links
-        const relationshipEnabled = filters.relationshipTypes[d.type as RelationshipType];
-        if (!relationshipEnabled) {
-          return 0.3; // Show filtered relationships with reduced but still visible opacity
-        }
-        
-        // No node selected - all links have default opacity
-        return 0.7;
-      })
       .attr('marker-end', d => {
         // Check if both source and target are person entities
         const sourceNode = filteredData.nodes.find(n => n.id === (typeof d.source === 'object' ? d.source.id : d.source));
@@ -240,13 +230,21 @@ const ForceGraph: React.FC<ForceGraphProps> = ({
         }
         
         return 'url(#arrow-standard)';
+      })
+      .each(function(d) {
+        // Store a reference to the source and target IDs for easier access
+        const link = d as ExtendedGraphLink;
+        link._sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+        link._targetId = typeof link.target === 'object' ? link.target.id : link.target;
       });
 
     // Create the nodes with improved sizing
     const node = g.append('g')
+      .attr('class', 'nodes-group')
       .selectAll('circle')
-      .data(filteredData.nodes)
+      .data(filteredData.nodes as ExtendedGraphNode[])
       .join('circle')
+      .attr('class', 'node')
       .attr('r', d => {
         // Base size on node degree or selected attribute
         if (filters.nodeSizeAttribute === 'equal') {
@@ -298,33 +296,30 @@ const ForceGraph: React.FC<ForceGraphProps> = ({
         return colorMode === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)'; // Increased stroke opacity
       })
       .attr('stroke-width', d => d.id === selectedNodeId ? 4 : highlightedNodeIds.includes(d.id) ? 3 : 1.5) // Thicker strokes
-      .style('opacity', d => {
-        // If a node is selected, show connected nodes with full opacity, others faded
-        if (selectedNodeId) {
-          // The selected node should be fully visible
-          if (d.id === selectedNodeId) return 1.0;
-          
-          // Check if this node is connected to the selected node
-          const isConnected = filteredData.links.some(link => {
-            const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
-            const targetId = typeof link.target === 'object' ? link.target.id : link.target;
-            return (sourceId === selectedNodeId && targetId === d.id) || 
-                   (sourceId === d.id && targetId === selectedNodeId);
-          });
-          
-          // Connected nodes get full opacity, others are faded
-          return isConnected ? 1.0 : 0.2;
-        }
-        
-        // No node selected - show all with full opacity
-        return 1.0;
-      }) 
+      .each(function(d) {
+        // Cache connected nodes for faster lookup
+        const node = d as ExtendedGraphNode;
+        node._connectedNodeIds = new Set(
+          filteredData.links
+            .filter(link => {
+              const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+              const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+              return sourceId === node.id || targetId === node.id;
+            })
+            .flatMap(link => {
+              const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+              const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+              return [sourceId, targetId];
+            })
+            .filter(id => id !== node.id)
+        );
+      })
       .call(drag() as any);
-
+      
     // Add node labels with improved positioning and readability
     const labels = g.append('g')
       .selectAll('text')
-      .data(filteredData.nodes)
+      .data(filteredData.nodes as ExtendedGraphNode[])
       .join('text')
       .attr('dx', d => {
         // Adjust label position based on node size
@@ -357,26 +352,6 @@ const ForceGraph: React.FC<ForceGraphProps> = ({
         return colorMode === 'dark' ? '#E2E8F0' : '#2D3748';
       })
       .style('pointer-events', 'none')
-      .style('opacity', d => {
-        if (d.id === selectedNodeId) return 1;
-        if (highlightedNodeIds.includes(d.id)) return 0.95;
-        
-        // If a node is selected, highlight connected nodes' labels and fade others
-        if (selectedNodeId) {
-          // Check if this node is connected to the selected node
-          const isConnected = filteredData.links.some(link => {
-            const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
-            const targetId = typeof link.target === 'object' ? link.target.id : link.target;
-            return (sourceId === selectedNodeId && targetId === d.id) || 
-                  (sourceId === d.id && targetId === selectedNodeId);
-          });
-          
-          // Connected node labels are more visible than unconnected ones
-          return isConnected ? 0.95 : 0.1;
-        }
-        
-        return 0.85; // Default opacity for labels when no node is selected
-      })
       .style('text-shadow', colorMode === 'dark' 
         ? '0 0 3px rgba(0,0,0,0.8), 0 0 2px rgba(0,0,0,0.9)' 
         : '0 0 3px rgba(255,255,255,0.8), 0 0 2px rgba(255,255,255,0.9)'
@@ -386,11 +361,32 @@ const ForceGraph: React.FC<ForceGraphProps> = ({
     node.append('title')
       .text(d => `${d.name} (${d.type})`);
 
-    // Add click event
-    node.on('click', (event, d) => {
+    // Add click event with improved propagation handling
+    node.on('click', function(event, d) {
+      // Stop the event immediately and completely
       event.stopPropagation();
-      onNodeClick(d);
-    });
+      event.preventDefault();
+      event.cancelBubble = true; // IE compatibility
+      
+      // Immediately mark this event as handled 
+      event.handled = true;
+      
+      console.log(`ForceGraph: Node clicked - ${d.name} (${d.type}), ID: ${d.id}`);
+      console.log(`ForceGraph: Event propagation stopped:`, event.defaultPrevented);
+      console.log(`ForceGraph: Current selectedNodeId: ${selectedNodeId}`);
+      
+      // Clear selection if clicking the same node again
+      if (selectedNodeId === d.id) {
+        console.log(`ForceGraph: Clearing selection (same node clicked again)`);
+        onNodeClick({ id: '', name: '', type: 'person' });
+      } else {
+        console.log(`ForceGraph: Setting new selection to ${d.name}`);
+        onNodeClick(d);
+      }
+      
+      // Double-check to make absolutely sure the event doesn't propagate
+      return false;
+    }, { capture: true }); // Add capture option to ensure this handler runs first
 
     // Add hover event
     node.on('mouseover', (_, d) => {
@@ -399,10 +395,69 @@ const ForceGraph: React.FC<ForceGraphProps> = ({
       onNodeHover(null);
     });
 
-    // Add background click to deselect
-    svg.on('click', () => {
-      onNodeClick({ id: '', name: '', type: 'person' });
+    // Add background click to deselect (modified to check the target)
+    svg.on('click', function(event) {
+      // If the event was already handled by a node click, don't process it here
+      if (event.handled) {
+        console.log('ForceGraph: Event already handled by node, ignoring background click');
+        return;
+      }
+      
+      // Only treat this as a background click if the target is the SVG or the root g element
+      // This prevents overlap with node clicks
+      const target = event.target;
+      const isBackgroundClick = target.tagName === 'svg' || 
+                               (target.tagName === 'g' && !target.classList.contains('node')) ||
+                               target === this;
+
+      console.log(`ForceGraph: Background click detected on:`, target.tagName);
+      
+      if (isBackgroundClick) {
+        console.log(`ForceGraph: Background clicked, clearing selection`);
+        onNodeClick({ id: '', name: '', type: 'person' });
+      } else {
+        console.log(`ForceGraph: Click on a non-background element:`, target.tagName);
+      }
     });
+
+    // Completely replace the event handler on the SVG element to catch ALL clicks
+    if (svgRef.current) {
+      // Remove the previous event listener if it exists
+      svgRef.current.removeEventListener('click', svgRef.current.clickHandler);
+      
+      // Create new handler function and store it on the element itself
+      svgRef.current.clickHandler = function(event) {
+        // Check if the target is a node or child of a node
+        let target = event.target;
+        let isNodeClick = false;
+        
+        // Check if the click target is a node or a child of a node
+        while (target) {
+          if (target.tagName === 'circle' || 
+              target.classList && target.classList.contains('node')) {
+            isNodeClick = true;
+            break;
+          }
+          target = target.parentElement;
+        }
+        
+        if (isNodeClick) {
+          console.log('ForceGraph: Node click detected in capture listener');
+          // Let the d3 handler handle this
+        } else if (event.target === svgRef.current) {
+          console.log('ForceGraph: Direct SVG background click detected');
+          // Only if we're directly clicking the SVG background (not a node or other element),
+          // and there's already a selection, clear it
+          if (selectedNodeId) {
+            console.log('ForceGraph: Clearing selection from SVG background');
+            onNodeClick({ id: '', name: '', type: 'person' });
+          }
+        }
+      };
+      
+      // Add the click handler in the capture phase (runs before bubbling phase)
+      svgRef.current.addEventListener('click', svgRef.current.clickHandler, true);
+    }
 
     // Create the simulation with optimized parameters for stability
     const sim = d3.forceSimulation<GraphNode, GraphLink>(filteredData.nodes as GraphNode[])
@@ -628,7 +683,7 @@ const ForceGraph: React.FC<ForceGraphProps> = ({
   // Always ensure links are visible with appropriate styling when filter conditions change
   useEffect(() => {
     if (svgRef.current && filteredData.links.length > 0) {
-      console.log("ForceGraph: Ensuring all edges are visible after filter change");
+      // console.log("ForceGraph: Ensuring all edges are visible after filter change");
       
       // Re-apply styling to all paths to ensure they're visible
       d3.select(svgRef.current)
@@ -684,6 +739,145 @@ const ForceGraph: React.FC<ForceGraphProps> = ({
       }
     }
   }, [filteredData, filters.relationshipTypes, selectedNodeId, highlightedNodeIds, svgRef.current]);
+
+  // Handle selected node changes
+  useEffect(() => {
+    if (!svgRef.current) return;
+    
+    // console.log(`ForceGraph: Selection changed - selectedNodeId: ${selectedNodeId || 'none'}`);
+    
+    // Get the SVG element and update node/link visibility when selection changes
+    const svg = d3.select(svgRef.current);
+    
+    try {
+      // Count connections for logging purposes
+      let connectedNodesCount = 0;
+      let connectedLinksCount = 0;
+      
+      // Check if we can find the elements we need to update
+      const circles = svg.selectAll('circle');
+      const paths = svg.selectAll('path.link');
+      const texts = svg.selectAll('text');
+      
+      // console.log(`ForceGraph: Found ${circles.size()} nodes, ${paths.size()} links, and ${texts.size()} labels`);
+      
+      if (circles.size() === 0) {
+        console.warn("ForceGraph: WARNING - No node circles found in the DOM");
+      }
+      
+      if (paths.size() === 0) {
+        console.warn("ForceGraph: WARNING - No path links found in the DOM");
+      }
+      
+      if (selectedNodeId) {
+        // Count connected nodes
+        connectedNodesCount = filteredData.links.filter(link => {
+          const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+          const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+          return sourceId === selectedNodeId || targetId === selectedNodeId;
+        }).length;
+        
+        // Get unique connected nodes (will be less than link count for multi-connected nodes)
+        const connectedNodeIds = new Set();
+        filteredData.links.forEach(link => {
+          const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+          const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+          
+          if (sourceId === selectedNodeId) {
+            connectedNodeIds.add(targetId);
+          } else if (targetId === selectedNodeId) {
+            connectedNodeIds.add(sourceId);
+          }
+        });
+        
+        // console.log(`ForceGraph: Found ${connectedNodesCount} connections for node ${selectedNodeId}`);
+        // console.log(`ForceGraph: Connected to ${connectedNodeIds.size} unique nodes`);
+        
+        // Verify the selected node exists in the DOM
+        const selectedNode = circles.filter(d => d.id === selectedNodeId);
+        if (selectedNode.size() === 0) {
+          console.warn(`ForceGraph: WARNING - Selected node ${selectedNodeId} not found in the DOM`);
+        } else {
+          // console.log(`ForceGraph: Selected node found in the DOM`);
+        }
+      }
+    
+      // Update node visibility
+      svg.selectAll('circle')
+        .style('opacity', (d: any) => {
+          if (!selectedNodeId) return 1.0;
+          
+          // Selected node is always visible
+          if (d.id === selectedNodeId) return 1.0;
+          
+          // Check if this node is connected to the selected node
+          const isConnected = filteredData.links.some(link => {
+            const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+            const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+            return (sourceId === selectedNodeId && targetId === d.id) || 
+                  (sourceId === d.id && targetId === selectedNodeId);
+          });
+          
+          // Connected nodes get full opacity, others are faded
+          return isConnected ? 1.0 : 0.2;
+        });
+      
+      // Update link visibility
+      svg.selectAll('path.link')
+        .style('opacity', (d: any) => {
+          if (!selectedNodeId) {
+            // No selection - apply normal filtering
+            const relationshipEnabled = filters.relationshipTypes[d.type as RelationshipType];
+            return relationshipEnabled ? 0.7 : 0.3;
+          }
+          
+          // When node is selected, highlight its connections
+          const sourceId = typeof d.source === 'object' ? d.source.id : d.source;
+          const targetId = typeof d.target === 'object' ? d.target.id : d.target;
+          const isConnected = sourceId === selectedNodeId || targetId === selectedNodeId;
+          
+          // Count highlighted links for debugging
+          if (isConnected) connectedLinksCount++;
+          
+          return isConnected ? 1.0 : 0.1;
+        });
+      
+      // Log connection counts after updates
+      if (selectedNodeId) {
+        // console.log(`ForceGraph: Applied highlighting to ${connectedLinksCount} links`);
+        
+        // Check for inconsistency which might indicate an issue
+        if (connectedLinksCount !== connectedNodesCount) {
+          console.warn(`ForceGraph: WARNING - Connected links (${connectedLinksCount}) doesn't match connection count (${connectedNodesCount})`);
+        }
+      }
+      
+      // Update label visibility
+      svg.selectAll('text')
+        .style('opacity', (d: any) => {
+          if (d.id === selectedNodeId) return 1.0;
+          if (highlightedNodeIds.includes(d.id)) return 0.95;
+          
+          if (selectedNodeId) {
+            // Check if this node is connected to the selected node
+            const isConnected = filteredData.links.some(link => {
+              const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+              const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+              return (sourceId === selectedNodeId && targetId === d.id) || 
+                    (sourceId === d.id && targetId === selectedNodeId);
+            });
+            
+            // Connected node labels are more visible than unconnected ones
+            return isConnected ? 0.95 : 0.1;
+          }
+          
+          return 0.85;
+        });
+    } catch (error) {
+      console.error("ForceGraph: Error updating node/link visibility:", error);
+    }
+      
+  }, [selectedNodeId, highlightedNodeIds, filteredData, filters.relationshipTypes]);
 
   // Improved drag functionality with better stability
   function drag() {

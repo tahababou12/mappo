@@ -65,6 +65,12 @@ const StatisticsView = lazy(() => import('../components/Statistics/StatisticsVie
 const EntityListView = lazy(() => import('../components/EntityList/EntityListView'));
 const GeographicMapView = lazy(() => import('../components/GeographicMap/GeographicMapView'));
 
+// Import the drawer components
+import SettingsDrawer from '../components/Pages/SettingsDrawer';
+import HelpDrawer from '../components/Pages/HelpDrawer';
+import ShareDrawer from '../components/Pages/ShareDrawer';
+import ExportDataDrawer from '../components/Pages/ExportDataDrawer';
+
 // Define view types
 type ViewType = 'network' | 'statistics' | 'entityList' | 'geographicMap';
 
@@ -80,6 +86,12 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [currentView, setCurrentView] = useState<ViewType>('network');
   const { isOpen: isInfoOpen, onOpen: onInfoOpen, onClose: onInfoClose } = useDisclosure();
+  
+  // Add state for the new drawers
+  const { isOpen: isSettingsOpen, onOpen: onSettingsOpen, onClose: onSettingsClose } = useDisclosure();
+  const { isOpen: isHelpOpen, onOpen: onHelpOpen, onClose: onHelpClose } = useDisclosure();
+  const { isOpen: isShareOpen, onOpen: onShareOpen, onClose: onShareClose } = useDisclosure();
+  const { isOpen: isExportOpen, onOpen: onExportOpen, onClose: onExportClose } = useDisclosure();
   
   // Initialize filters
   const [filters, setFilters] = useState<FilterState>({
@@ -368,6 +380,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
                   aria-label="Export Data"
                   icon={<Download size={18} />}
                   variant="ghost"
+                  onClick={onExportOpen}
                   size="sm"
                 />
               </Tooltip>
@@ -377,6 +390,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
                   aria-label="Share"
                   icon={<Share2 size={18} />}
                   variant="ghost"
+                  onClick={onShareOpen}
                   size="sm"
                 />
               </Tooltip>
@@ -386,6 +400,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
                   aria-label="Settings"
                   icon={<Settings size={18} />}
                   variant="ghost"
+                  onClick={onSettingsOpen}
                   size="sm"
                 />
               </Tooltip>
@@ -405,6 +420,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
                   aria-label="Help"
                   icon={<HelpCircle size={18} />}
                   variant="ghost"
+                  onClick={onHelpOpen}
                   size="sm"
                 />
               </Tooltip>
@@ -514,32 +530,31 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
       </Grid>
       
       {/* Query Interface (Drawer) */}
-      <QueryInterface 
+      {/* <QueryInterface 
         entities={data.nodes}
         onSelectEntity={handleNodeSelect}
-      />
+      /> */}
       
       {/* Chatbot Interface */}
       <ChatbotInterface
         entities={data.nodes}
         onSelectEntity={handleNodeSelect}
+        graphData={data}
       />
       
-      {/* Network Information Drawer */}
-      <Drawer
-        isOpen={isInfoOpen}
-        placement="right"
-        onClose={onInfoClose}
-        size="md"
-      >
+      {/* Add drawers */}
+      <SettingsDrawer isOpen={isSettingsOpen} onClose={onSettingsClose} />
+      <HelpDrawer isOpen={isHelpOpen} onClose={onHelpClose} />
+      <ShareDrawer isOpen={isShareOpen} onClose={onShareClose} />
+      <ExportDataDrawer isOpen={isExportOpen} onClose={onExportClose} />
+      
+      {/* Info drawer */}
+      <Drawer isOpen={isInfoOpen} placement="right" onClose={onInfoClose} size="md">
         <DrawerOverlay />
         <DrawerContent bg={colorMode === 'dark' ? 'gray.800' : 'white'}>
-          <DrawerCloseButton />
           <DrawerHeader borderBottomWidth="1px">
-            <Flex align="center">
-              <Database size={20} className="mr-2" />
-              Network Information
-            </Flex>
+            <Text fontWeight="bold">Network Information</Text>
+            <DrawerCloseButton />
           </DrawerHeader>
           
           <DrawerBody>
