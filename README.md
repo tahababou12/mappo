@@ -1,6 +1,72 @@
 # Historical Network Analysis
 
-A web application for visualizing and analyzing historical network data, with a focus on relationship mapping through time and space.
+This project provides tools for historical network analysis and visualization.
+
+## Project Structure
+
+The project is split into two main parts:
+
+- **Frontend**: A React application built with Vite, TypeScript, and Chakra UI for data visualization
+- **Backend**: A Node.js Express API that provides data processing and access to the frontend
+
+## Setup and Installation
+
+### Prerequisites
+
+- Node.js (v16+)
+- npm or pnpm
+
+### Installation
+
+1. Install dependencies for both frontend and backend:
+
+```bash
+npm install
+```
+
+This will install dependencies for both projects.
+
+## Running the Application
+
+You can run both frontend and backend together:
+
+```bash
+npm start
+```
+
+Or run them separately:
+
+### Backend
+
+```bash
+npm run start:backend
+```
+
+The backend API will run on http://localhost:3001.
+
+### Frontend
+
+```bash
+npm run start:frontend
+```
+
+The frontend will run on http://localhost:5173.
+
+## Building for Production
+
+To build both projects:
+
+```bash
+npm run build
+```
+
+The frontend build will be in `frontend/dist/` and the backend build will be in `backend/dist/`.
+
+## API Endpoints
+
+- `GET /api` - Root endpoint
+- `GET /api/data/sample` - Get sample historical network data
+- `GET /api/data/excel` - Get data from the Excel file
 
 ## Features
 
@@ -18,46 +84,6 @@ A web application for visualizing and analyzing historical network data, with a 
 - **Graph Visualization**: react-force-graph-3d
 - **Bundler**: Vite
 - **Styling**: Tailwind CSS
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js (version 16 or higher)
-- pnpm (recommended) or npm
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/historical-network-analysis.git
-cd historical-network-analysis
-
-# Install dependencies
-pnpm install
-# or with npm
-npm install
-```
-
-### Running the Development Server
-
-```bash
-pnpm dev
-# or with npm
-npm run dev
-```
-
-The application will be available at http://localhost:5173
-
-### Building for Production
-
-```bash
-pnpm build
-# or with npm
-npm run build
-```
-
-The built files will be available in the `dist` directory.
 
 ## Data Format
 

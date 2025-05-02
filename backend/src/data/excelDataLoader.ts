@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { convertToGraphData } from './dataAdapter';
 import { GraphData } from '../types';
+import fs from 'fs/promises';
 
 // Define the structure to match the dataAdapter HistoricalRecord
 interface HistoricalRecord {
@@ -27,23 +28,18 @@ export async function loadExcelData(filePath: string): Promise<GraphData> {
       return dataCache.get(filePath)!;
     }
 
-    console.log('Fetching Excel file from:', filePath);
+    console.log('Loading Excel file from:', filePath);
     // Start timing the operation
     const startTime = performance.now();
     
-    // Fetch the Excel file
-    const response = await fetch(filePath);
+    // Read the Excel file using Node.js fs
+    const buffer = await fs.readFile(filePath);
     
-    if (!response.ok) {
-      throw new Error(`Failed to fetch Excel file: ${response.status} ${response.statusText}`);
-    }
-    
-    const arrayBuffer = await response.arrayBuffer();
-    console.log('File fetched successfully, size:', arrayBuffer.byteLength, 'bytes');
+    console.log('File loaded successfully, size:', buffer.byteLength, 'bytes');
     
     // Parse the Excel file with optimized options
-    const workbook = XLSX.read(arrayBuffer, { 
-      type: 'array',
+    const workbook = XLSX.read(buffer, { 
+      type: 'buffer',
       cellDates: false, // Don't convert to dates (faster)
       cellNF: false,    // Don't parse number formats (faster)
       cellStyles: false // Don't parse styles (faster)

@@ -1,14 +1,11 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { ChakraProvider, ColorModeScript, Spinner, Center, Text, VStack } from '@chakra-ui/react';
-import { sampleHistoricalGraphData } from './data/dataAdapter';
-import { loadExcelData } from './data/excelDataLoader';
+import axios from 'axios';
 import theme from './theme';
 import { GraphData } from './types';
 
 // Lazy load the main layout to improve initial load time
 const MainLayout = lazy(() => import('./layouts/MainLayout'));
-
-// Web Worker for data loading (if supported)
 
 // Memory optimization for large datasets - Preserve all nodes and edges
 const optimizeGraph = (data: GraphData): GraphData => {
@@ -40,6 +37,9 @@ const optimizeGraph = (data: GraphData): GraphData => {
   };
 };
 
+// Backend API URL
+const API_URL = 'http://localhost:3001/api';
+
 function App() {
   const [data, setData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,21 +48,19 @@ function App() {
 
   useEffect(() => {
     let isMounted = true;
-    let workerInstance: Worker | null = null;
     
     async function fetchData() {
       try {
         setLoading(true);
         setLoadingProgress(10);
         
-        // Excel file is in the public directory
-        const excelFilePath = '/data/cleaned_ruskin.xlsx';
-        console.log('Loading data from:', excelFilePath);
+        console.log('Fetching data from API:', `${API_URL}/data/excel`);
         
-        // Use main thread processing for simplicity
+        // Use API to fetch data
         try {
           setLoadingProgress(30);
-          const graphData = await loadExcelData(excelFilePath);
+          const response = await axios.get(`${API_URL}/data/excel`);
+          const graphData = response.data;
           
           setLoadingProgress(80);
           // Optimize the data for performance
@@ -74,18 +72,23 @@ function App() {
             setTimeout(() => setLoading(false), 1000); // Increased from 100ms to 1000ms
           }
         } catch (err) {
-          console.error('Failed to load Excel data in main thread:', err);
+          console.error('Failed to load data from API, falling back to sample data:', err);
           if (isMounted) {
             setError(`Failed to process data: ${err instanceof Error ? err.message : String(err)}`);
-            setData(sampleHistoricalGraphData);
+            // Fetch sample data instead
+            try {
+              const sampleResponse = await axios.get(`${API_URL}/data/sample`);
+              setData(sampleResponse.data);
+            } catch (sampleErr) {
+              setError(`Failed to load sample data: ${sampleErr instanceof Error ? sampleErr.message : String(sampleErr)}`);
+            }
             setLoading(false);
           }
         }
       } catch (err) {
-        console.error('Failed to load Excel data:', err);
+        console.error('Failed to load data:', err);
         if (isMounted) {
           setError(`Failed to load data: ${err instanceof Error ? err.message : String(err)}. Falling back to sample data.`);
-          setData(sampleHistoricalGraphData);
           setLoading(false);
         }
       }
@@ -95,11 +98,6 @@ function App() {
     
     return () => {
       isMounted = false;
-      // Clean up worker if it exists
-      if (workerInstance) {
-        workerInstance.terminate();
-        workerInstance = null;
-      }
     };
   }, []);
 
