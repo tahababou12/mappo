@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "buildCommand": "cd backend && pnpm install && pnpm build && cd ../frontend && pnpm install && pnpm build",
+  "outputDirectory": "frontend/dist",
+  "framework": "vite",
+  "functions": {
+    "api/**/*.js": {
+      "runtime": "nodejs18.x",
+      "memory": 1024
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
+} 

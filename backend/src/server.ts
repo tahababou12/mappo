@@ -12,7 +12,11 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? process.env.FRONTEND_URL || 'https://mhall-final.vercel.app' 
+    : 'http://localhost:5173'
+}));
 app.use(express.json());
 
 // Serve static files from the public directory
@@ -26,9 +30,11 @@ app.get('/api', (req: Request, res: Response) => {
   res.json({ message: 'Historical Network Analysis API' });
 });
 
-// Start the server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// Only start the server when running locally, not on Vercel
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
 
 export default app; 
