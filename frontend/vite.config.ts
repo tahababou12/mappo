@@ -17,7 +17,7 @@ export default defineConfig({
     },
     allowedHosts: [
       'mhall.bragai.tech',          // HTTP(S) requests from this host will be accepted
-      'localhost'                   // you can keep localhost too
+      'localhost:3001'              // you can keep localhost too
     ]
   }
 })
