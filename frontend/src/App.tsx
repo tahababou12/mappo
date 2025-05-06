@@ -41,7 +41,7 @@ const optimizeGraph = (data: GraphData): GraphData => {
 const API_URL = import.meta.env.VITE_API_URL || (
   process.env.NODE_ENV === 'production' 
     ? '/api' 
-    : 'http://localhost:3001/api'
+    : 'https://mhall.bragai.tech/api'
 );
 
 function App() {
