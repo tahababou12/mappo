@@ -58,8 +58,8 @@ const optimizeGraph = (data: unknown): GraphData => {
 // Backend API URL
 const API_URL = import.meta.env.VITE_API_URL || (
   process.env.NODE_ENV === 'production' 
-    ? '/api' 
-    : 'https://mhall.bragai.tech/api'
+    ? 'https://mhall.bragai.tech/api'
+    : 'http://localhost:3001/api'
 );
 
 function App() {
@@ -77,11 +77,15 @@ function App() {
         setLoadingProgress(10);
         
         console.log('Fetching data from API:', `${API_URL}/data/excel`);
+        console.log('Environment:', process.env.NODE_ENV);
+        console.log('VITE_API_URL:', import.meta.env.VITE_API_URL);
         
         // Use API to fetch data
         try {
           setLoadingProgress(30);
           const response = await axios.get(`${API_URL}/data/excel`);
+          console.log('API Response:', response);
+          console.log('Response data:', response.data);
           const graphData = response.data;
           
           setLoadingProgress(80);
@@ -95,13 +99,32 @@ function App() {
           }
         } catch (err) {
           console.error('Failed to load data from API, falling back to sample data:', err);
+          if (axios.isAxiosError(err)) {
+            console.error('Axios error details:', {
+              status: err.response?.status,
+              statusText: err.response?.statusText,
+              data: err.response?.data,
+              url: err.config?.url
+            });
+          }
           if (isMounted) {
             setError(`Failed to process data: ${err instanceof Error ? err.message : String(err)}`);
             // Fetch sample data instead
             try {
+              console.log('Trying to fetch sample data from:', `${API_URL}/data/sample`);
               const sampleResponse = await axios.get(`${API_URL}/data/sample`);
+              console.log('Sample data response:', sampleResponse.data);
               setData(sampleResponse.data);
             } catch (sampleErr) {
+              console.error('Sample data error:', sampleErr);
+              if (axios.isAxiosError(sampleErr)) {
+                console.error('Sample data axios error details:', {
+                  status: sampleErr.response?.status,
+                  statusText: sampleErr.response?.statusText,
+                  data: sampleErr.response?.data,
+                  url: sampleErr.config?.url
+                });
+              }
               setError(`Failed to load sample data: ${sampleErr instanceof Error ? sampleErr.message : String(sampleErr)}`);
             }
             setLoading(false);
