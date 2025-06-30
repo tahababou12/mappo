@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3001;
 // Middleware
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL || 'https://mhall-final.vercel.app' 
+    ? process.env.FRONTEND_URL || 'https://mhall.bragai.tech' 
     : 'http://localhost:5173'
 }));
 app.use(express.json());

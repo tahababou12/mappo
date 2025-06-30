@@ -8,23 +8,41 @@ import { GraphData } from './types';
 const MainLayout = lazy(() => import('./layouts/MainLayout'));
 
 // Memory optimization for large datasets - Preserve all nodes and edges
-const optimizeGraph = (data: GraphData): GraphData => {
+const optimizeGraph = (data: unknown): GraphData => {
+  // Validate input data structure
+  if (!data || typeof data !== 'object') {
+    console.error("Invalid data: data is null, undefined, or not an object");
+    return { nodes: [], links: [] };
+  }
+  
+  const graphData = data as { nodes?: unknown; links?: unknown };
+  
+  if (!Array.isArray(graphData.nodes)) {
+    console.error("Invalid data: nodes is not an array");
+    return { nodes: [], links: [] };
+  }
+  
+  if (!Array.isArray(graphData.links)) {
+    console.error("Invalid data: links is not an array");
+    return { nodes: [], links: [] };
+  }
+  
   // This is a pass-through function now - we want to show all nodes and edges
-  console.log(`Processing graph data with ${data.nodes.length} nodes and ${data.links.length} links`);
+  console.log(`Processing graph data with ${graphData.nodes.length} nodes and ${graphData.links.length} links`);
   
   // Validate the data
-  if (data.nodes.length === 0) {
+  if (graphData.nodes.length === 0) {
     console.warn("Warning: No nodes found in the graph data!");
   }
   
   // Log some sample nodes for debugging
-  if (data.nodes.length > 0) {
-    console.log("Sample nodes:", data.nodes.slice(0, 5).map(n => n.name));
+  if (graphData.nodes.length > 0) {
+    console.log("Sample nodes:", graphData.nodes.slice(0, 5).map((n: { name?: string }) => n.name));
   }
   
   // Log some sample links for debugging
-  if (data.links.length > 0) {
-    console.log("Sample links:", data.links.slice(0, 5).map(l => ({
+  if (graphData.links.length > 0) {
+    console.log("Sample links:", graphData.links.slice(0, 5).map((l: { source?: unknown; target?: unknown }) => ({
       source: typeof l.source === 'string' ? l.source : String(l.source),
       target: typeof l.target === 'string' ? l.target : String(l.target)
     })));
@@ -32,8 +50,8 @@ const optimizeGraph = (data: GraphData): GraphData => {
   
   // Deep clone the data to avoid reference issues
   return {
-    nodes: [...data.nodes],
-    links: [...data.links]
+    nodes: [...graphData.nodes],
+    links: [...graphData.links]
   };
 };
 

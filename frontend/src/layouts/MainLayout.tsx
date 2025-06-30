@@ -24,7 +24,6 @@ import {
   Text,
   HStack,
   VStack,
-  Image,
   Button,
   Menu,
   MenuButton,
@@ -35,7 +34,6 @@ import {
 } from '@chakra-ui/react';
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import { 
-  Database, 
   Network, 
   History, 
   Filter, 
@@ -56,9 +54,8 @@ import SearchBar from '../components/Search/SearchBar';
 import ControlPanel from '../components/ControlPanel/ControlPanel';
 import GraphContainer from '../components/GraphVisualization/GraphContainer';
 import EntityDetailsPanel from '../components/EntityDetails/EntityDetailsPanel';
-import QueryInterface from '../components/QueryInterface/QueryInterface';
 import ChatbotInterface from '../components/Chatbot/ChatbotInterface';
-import { Entity, Relationship, FilterState, GraphData } from '../types';
+import { Entity, FilterState, GraphData } from '../types';
 
 // Lazy-load the new view components
 const StatisticsView = lazy(() => import('../components/Statistics/StatisticsView'));
@@ -115,19 +112,19 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
     nodeSizeAttribute: 'degree'
   });
 
-  // Get selected entity and its relationships
-  const selectedEntity = selectedNodeId 
-    ? data.nodes.find(node => node.id === selectedNodeId) || null 
+  // Get selected entity and its relationships (with safe data access)
+  const selectedEntity = selectedNodeId && data?.nodes
+    ? data.nodes.find((node: Entity) => node.id === selectedNodeId) || null 
     : null;
   
   // Get entity relationships, respecting current filter settings
-  const entityRelationships = selectedNodeId 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const entityRelationships: any[] = selectedNodeId && data?.links && data?.nodes
     ? data.links
-        .filter(link => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((link: any) => {
           // First make sure this link connects to our selected node
-          // @ts-expect-error - Ignoring type checking for source and target properties
           const linkSource = typeof link.source === 'object' ? link.source.id : link.source;
-          // @ts-expect-error - Ignoring type checking for source and target properties
           const linkTarget = typeof link.target === 'object' ? link.target.id : link.target;
           
           // If this link doesn't connect to our selected node, skip it
@@ -136,18 +133,18 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
           }
           
           // Only include relationship if it passes filter checks
-          const sourceNode = data.nodes.find(node => node.id === linkSource);
-          const targetNode = data.nodes.find(node => node.id === linkTarget);
+          const sourceNode = data.nodes.find((node: Entity) => node.id === linkSource);
+          const targetNode = data.nodes.find((node: Entity) => node.id === linkTarget);
           
           // Skip if either node doesn't exist
           if (!sourceNode || !targetNode) return false;
           
           // Check entity type filters
-          if (!filters.entityTypes[sourceNode.type]) return false;
-          if (!filters.entityTypes[targetNode.type]) return false;
+          if (!filters.entityTypes[sourceNode.type as keyof typeof filters.entityTypes]) return false;
+          if (!filters.entityTypes[targetNode.type as keyof typeof filters.entityTypes]) return false;
           
           // Check relationship type filter
-          if (!filters.relationshipTypes[link.type]) return false;
+          if (!filters.relationshipTypes[link.type as keyof typeof filters.relationshipTypes]) return false;
           
           // Check time range filter for entities with dates
           const sourceYear = sourceNode.startDate ? parseInt(sourceNode.startDate.split('-')[0]) : null;
@@ -158,22 +155,22 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
           
           return true;
         })
-        .map(link => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((link: any) => {
           // Normalize source/target to handle both string and object formats
-          // @ts-expect-error - Ignoring type checking for source and target properties
           const linkSource = typeof link.source === 'object' ? link.source.id : link.source;
-          // @ts-expect-error - Ignoring type checking for source and target properties
           const linkTarget = typeof link.target === 'object' ? link.target.id : link.target;
           
           const otherEntityId = linkSource === selectedNodeId ? linkTarget : linkSource;
-          const otherEntity = data.nodes.find(node => node.id === otherEntityId);
+          const otherEntity = data.nodes.find((node: Entity) => node.id === otherEntityId);
           
           return {
             entity: otherEntity as Entity,
             relationship: link
           };
         })
-        .filter(rel => rel.entity) // Ensure we have a valid entity
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((rel: any) => rel.entity) // Ensure we have a valid entity
     : [];
 
   const handleFilterChange = (newFilters: Partial<FilterState>) => {
@@ -198,11 +195,17 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
     console.log(`Expanding neighborhood for entity ${entityId}`);
     
     // For demo purposes, just highlight the entity and its direct connections
-    const directConnections = data.links
-      .filter(link => link.source === entityId || link.target === entityId)
-      .map(link => link.source === entityId ? link.target : link.source) as string[];
-    
-    setSearchResults([entityId, ...directConnections]);
+    if (data?.links) {
+      const directConnections = data.links
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((link: any) => link.source === entityId || link.target === entityId)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((link: any) => link.source === entityId ? link.target : link.source) as string[];
+      
+      setSearchResults([entityId, ...directConnections]);
+    } else {
+      setSearchResults([entityId]);
+    }
   };
 
   const toggleFullscreen = () => {
@@ -215,15 +218,26 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
     setCurrentView(view);
   };
 
-  // Network statistics for info panel
+  // Network statistics for info panel with safe data access
   const networkStats = {
-    nodes: data.nodes.length,
-    links: data.links.length,
-    personCount: data.nodes.filter(n => n.type === 'person').length,
-    organizationCount: data.nodes.filter(n => n.type === 'organization').length,
-    eventCount: data.nodes.filter(n => n.type === 'event').length,
-    locationCount: data.nodes.filter(n => n.type === 'location').length,
-    timeRange: `${Math.min(...data.nodes.filter(n => n.startDate).map(n => parseInt(n.startDate!.split('-')[0])))} - ${Math.max(...data.nodes.filter(n => n.endDate).map(n => parseInt(n.endDate!.split('-')[0])))}`
+    nodes: data?.nodes?.length || 0,
+    links: data?.links?.length || 0,
+    personCount: data?.nodes?.filter((n: Entity) => n.type === 'person').length || 0,
+    organizationCount: data?.nodes?.filter((n: Entity) => n.type === 'organization').length || 0,
+    eventCount: data?.nodes?.filter((n: Entity) => n.type === 'event').length || 0,
+    locationCount: data?.nodes?.filter((n: Entity) => n.type === 'location').length || 0,
+    timeRange: data?.nodes?.length > 0 
+      ? (() => {
+          const nodesWithStartDate = data.nodes.filter((n: Entity) => n.startDate);
+          const nodesWithEndDate = data.nodes.filter((n: Entity) => n.endDate);
+          if (nodesWithStartDate.length > 0 && nodesWithEndDate.length > 0) {
+            const minYear = Math.min(...nodesWithStartDate.map((n: Entity) => parseInt(n.startDate!.split('-')[0])));
+            const maxYear = Math.max(...nodesWithEndDate.map((n: Entity) => parseInt(n.endDate!.split('-')[0])));
+            return `${minYear} - ${maxYear}`;
+          }
+          return 'Unknown';
+        })()
+      : 'No data'
   };
 
   // Handle keyboard shortcuts
@@ -242,7 +256,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
       // / key to focus search
       if (e.key === '/' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        document.querySelector('input[placeholder="Search entities..."]')?.focus();
+        const searchInput = document.querySelector('input[placeholder="Search entities..."]') as HTMLInputElement;
+        searchInput?.focus();
       }
     };
     
@@ -286,6 +301,26 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
     }
   };
 
+  // Early return for invalid data (after all hooks)
+  if (!data || !Array.isArray(data.nodes) || !Array.isArray(data.links)) {
+    console.error("MainLayout: Invalid data structure", data);
+    return (
+      <Box 
+        minH="100vh" 
+        bg={colorMode === 'dark' ? 'gray.900' : 'gray.50'}
+        color={colorMode === 'dark' ? 'white' : 'gray.800'}
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+      >
+        <VStack spacing={4}>
+          <Text fontSize="xl" fontWeight="bold">Data Loading Error</Text>
+          <Text>Invalid data structure received. Please check the API response.</Text>
+        </VStack>
+      </Box>
+    );
+  }
+
   return (
     <Box 
       minH="100vh" 
@@ -317,7 +352,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
           <Flex align="center" gap={3}>
             <Box width="300px">
               <SearchBar 
-                entities={data.nodes} 
+                entities={data?.nodes || []} 
                 onSearch={handleSearch}
                 onSelectEntity={handleNodeSelect}
               />
@@ -537,7 +572,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
       
       {/* Chatbot Interface */}
       <ChatbotInterface
-        entities={data.nodes}
+        entities={data?.nodes || []}
         onSelectEntity={handleNodeSelect}
         graphData={data}
       />
