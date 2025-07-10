@@ -222,20 +222,25 @@ const MainLayout: React.FC<MainLayoutProps> = ({ data }) => {
   const networkStats = {
     nodes: data?.nodes?.length || 0,
     links: data?.links?.length || 0,
-    personCount: data?.nodes?.filter((n: Entity) => n.type === 'person').length || 0,
-    organizationCount: data?.nodes?.filter((n: Entity) => n.type === 'organization').length || 0,
-    eventCount: data?.nodes?.filter((n: Entity) => n.type === 'event').length || 0,
-    locationCount: data?.nodes?.filter((n: Entity) => n.type === 'location').length || 0,
-    timeRange: data?.nodes?.length > 0 
+    personCount: (data?.nodes && Array.isArray(data.nodes)) ? data.nodes.filter((n: Entity) => n.type === 'person').length : 0,
+    organizationCount: (data?.nodes && Array.isArray(data.nodes)) ? data.nodes.filter((n: Entity) => n.type === 'organization').length : 0,
+    eventCount: (data?.nodes && Array.isArray(data.nodes)) ? data.nodes.filter((n: Entity) => n.type === 'event').length : 0,
+    locationCount: (data?.nodes && Array.isArray(data.nodes)) ? data.nodes.filter((n: Entity) => n.type === 'location').length : 0,
+    timeRange: data?.nodes && Array.isArray(data.nodes) && data.nodes.length > 0 
       ? (() => {
-          const nodesWithStartDate = data.nodes.filter((n: Entity) => n.startDate);
-          const nodesWithEndDate = data.nodes.filter((n: Entity) => n.endDate);
-          if (nodesWithStartDate.length > 0 && nodesWithEndDate.length > 0) {
-            const minYear = Math.min(...nodesWithStartDate.map((n: Entity) => parseInt(n.startDate!.split('-')[0])));
-            const maxYear = Math.max(...nodesWithEndDate.map((n: Entity) => parseInt(n.endDate!.split('-')[0])));
-            return `${minYear} - ${maxYear}`;
+          try {
+            const nodesWithStartDate = data.nodes.filter((n: Entity) => n.startDate);
+            const nodesWithEndDate = data.nodes.filter((n: Entity) => n.endDate);
+            if (nodesWithStartDate.length > 0 && nodesWithEndDate.length > 0) {
+              const minYear = Math.min(...nodesWithStartDate.map((n: Entity) => parseInt(n.startDate!.split('-')[0])));
+              const maxYear = Math.max(...nodesWithEndDate.map((n: Entity) => parseInt(n.endDate!.split('-')[0])));
+              return `${minYear} - ${maxYear}`;
+            }
+            return 'Unknown';
+          } catch (error) {
+            console.error('Error calculating time range:', error);
+            return 'Unknown';
           }
-          return 'Unknown';
         })()
       : 'No data'
   };
